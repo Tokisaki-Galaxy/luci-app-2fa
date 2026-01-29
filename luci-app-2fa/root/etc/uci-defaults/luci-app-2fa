@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # luci-app-2fa: Setup script for two-factor authentication
-# This script configures 2FA without modifying any system files
+# This script sets up the 2FA configuration without modifying any system files
 
 # Create 2FA config if not exists
 if [ ! -f /etc/config/2fa ]; then
@@ -19,31 +19,5 @@ fi
 
 # Ensure proper permissions on config file (contains sensitive key)
 chmod 0600 /etc/config/2fa
-
-# Configure uhttpd to use our 2FA-enabled handler instead of the default
-# We modify the ucode_prefix list entry for /cgi-bin/luci
-# Safety: If our handler fails, it will fallback to normal dispatch
-
-DEFAULT_HANDLER="/cgi-bin/luci=/usr/share/ucode/luci/uhttpd.uc"
-TFA_HANDLER="/cgi-bin/luci=/usr/share/ucode/luci/uhttpd-2fa.uc"
-
-# Check if uhttpd config exists
-if [ -f /etc/config/uhttpd ]; then
-	# Check if the default handler is in the list
-	if uci -q get uhttpd.main.ucode_prefix | grep -sq "$DEFAULT_HANDLER"; then
-		# Check if our handler file exists before switching
-		if [ -f "/usr/share/ucode/luci/uhttpd-2fa.uc" ]; then
-			# Remove the old default entry and add our 2FA-enabled one
-			uci del_list uhttpd.main.ucode_prefix="$DEFAULT_HANDLER" 2>/dev/null
-			uci add_list uhttpd.main.ucode_prefix="$TFA_HANDLER"
-			uci commit uhttpd
-			
-			# Restart uhttpd to apply changes (if running)
-			if [ -x /etc/init.d/uhttpd ]; then
-				/etc/init.d/uhttpd restart 2>/dev/null || true
-			fi
-		fi
-	fi
-fi
 
 exit 0
