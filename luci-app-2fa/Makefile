@@ -11,7 +11,7 @@ PKG_VERSION:=1.0.0
 PKG_RELEASE:=1
 
 PKG_LICENSE:=Apache-2.0
-PKG_MAINTAINER:=Christian Marangi <ansuelsmth@gmail.com>
+PKG_MAINTAINER:=Tokiskai Galaxy <moebest@outlook.jp>
 
 LUCI_TITLE:=LuCI 2-Factor Authentication
 LUCI_DEPENDS:=+luci-base
