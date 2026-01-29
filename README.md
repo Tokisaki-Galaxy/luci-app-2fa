@@ -4,7 +4,11 @@
 <img src="https://img.shields.io/badge/License-Apache%202.0-green?style=flat-square" alt="License" />
 <img src="https://img.shields.io/badge/LuCI-Web%20Interface-orange?style=flat-square&logo=lua" alt="LuCI" />
 
-# 🔐 LuCI-App-2FA
+# 🔐 [WIP]LuCI-App-2FA
+
+# PLEASE DO NOT DOWNLOAD AND USE THIS REPO NOW, IT IS STILL UNDER DEVELOPMENT.
+
+# UNTIL IT IS MARKED AS STABLE, PLEASE WAIT.
 
 **LuCI 2-Factor Authentication (2FA) app for OpenWrt**
 
@@ -38,7 +42,7 @@ This package adds two-factor authentication support to the LuCI web interface, e
 ```bash
 wget https://tokisaki-galaxy.github.io/luci-app-2fa/all/key-build.pub -O /tmp/key-build.pub
 opkg-key add /tmp/key-build.pub
-echo "src/gz tailscale_community https://tokisaki-galaxy.github.io/luci-app-2fa/all" >> /etc/opkg/customfeeds.conf
+echo "src/gz luci-app-2fa https://tokisaki-galaxy.github.io/luci-app-2fa/all" >> /etc/opkg/customfeeds.conf
 opkg update
 opkg install luci-app-2fa
 ```
@@ -106,7 +110,7 @@ OpenWrt 的 LuCI 双因素认证（2FA）应用。
 ```bash
 wget https://tokisaki-galaxy.github.io/luci-app-2fa/all/key-build.pub -O /tmp/key-build.pub
 opkg-key add /tmp/key-build.pub
-echo "src/gz tailscale_community https://tokisaki-galaxy.github.io/luci-app-2fa/all" >> /etc/opkg/customfeeds.conf
+echo "src/gz luci-app-2fa https://tokisaki-galaxy.github.io/luci-app-2fa/all" >> /etc/opkg/customfeeds.conf
 opkg update
 opkg install luci-app-2fa
 ```
