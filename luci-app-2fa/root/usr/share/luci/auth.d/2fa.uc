@@ -6,9 +6,6 @@
 // This plugin implements TOTP/HOTP verification as an additional
 // authentication factor for LuCI login.
 
-import { cursor } from 'uci';
-import { popen } from 'fs';
-
 // Constant-time string comparison to prevent timing attacks
 function constant_time_compare(a, b) {
 	if (length(a) != length(b))
@@ -23,14 +20,15 @@ function constant_time_compare(a, b) {
 
 // Sanitize username to prevent command injection
 function sanitize_username(username) {
-	if (!match(username, /^[a-zA-Z0-9_\-\.]+$/))
+	if (!match(username, /^[a-zA-Z0-9_.+-]+$/))
 		return null;
 	return username;
 }
 
 // Check if 2FA is enabled for a user
 function is_2fa_enabled(username) {
-	let ctx = cursor();
+	let uci = require('uci');
+	let ctx = uci.cursor();
 	
 	// Check if 2FA is globally enabled
 	let enabled = ctx.get('2fa', 'settings', 'enabled');
@@ -52,6 +50,8 @@ function is_2fa_enabled(username) {
 
 // Verify OTP for user
 function verify_otp(username, otp) {
+	let fs = require('fs');
+	
 	if (!otp || otp == '')
 		return false;
 
@@ -62,7 +62,7 @@ function verify_otp(username, otp) {
 	// Trim and normalize input
 	otp = trim(otp);
 
-	let fd = popen('/usr/libexec/generate_otp.uc ' + safe_username);
+	let fd = fs.popen('/usr/libexec/generate_otp.uc ' + safe_username);
 	if (!fd)
 		return false;
 
