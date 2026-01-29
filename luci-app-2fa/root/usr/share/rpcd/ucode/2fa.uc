@@ -36,10 +36,34 @@ function generateBase32Key(keyLength) {
 }
 
 const methods = {
+	// Check if 2FA is enabled - accessible without authentication for login flow
+	isEnabled: {
+		args: { username: '' },
+		call: function(request) {
+			let ctx = cursor();
+			let username = request.args.username || 'root';
+
+			// Check if 2FA is globally enabled
+			let enabled = ctx.get('2fa', 'settings', 'enabled');
+			if (enabled != '1') {
+				return { enabled: false };
+			}
+
+			// Check if user has a key configured
+			let key = ctx.get('2fa', username, 'key');
+			if (!key || key == '') {
+				return { enabled: false };
+			}
+
+			return { enabled: true };
+		}
+	},
+
 	verifyOTP: {
-		args: { otp: '' },
+		args: { otp: '', username: '' },
 		call: function(request) {
 			let otp = request.args.otp;
+			let username = request.args.username || 'root';
 			let ctx = cursor();
 
 			// Check if 2FA is enabled
@@ -49,13 +73,20 @@ const methods = {
 				return { result: true };
 			}
 
+			// Check if user has a key configured
+			let key = ctx.get('2fa', username, 'key');
+			if (!key || key == '') {
+				// No key configured for this user, allow login without OTP
+				return { result: true };
+			}
+
 			if (!otp || otp == '')
 				return { result: false };
 			
 			// Trim and normalize input
 			otp = trim(otp);
 			
-			let fd = popen('/usr/libexec/generate_otp.uc');
+			let fd = popen('/usr/libexec/generate_otp.uc ' + username);
 			if (!fd)
 				return { result: false };
 
