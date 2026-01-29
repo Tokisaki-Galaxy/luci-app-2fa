@@ -15,6 +15,10 @@ LUCI_TITLE:=LuCI 2-Factor Authentication
 LUCI_DEPENDS:=+luci-base
 LUCI_PKGARCH:=all
 
+define Package/luci-app-2fa/conffiles
+/etc/config/2fa
+endef
+
 include $(TOPDIR)/feeds/luci/luci.mk
 
 # call BuildPackage - OpenWrt buildroot
