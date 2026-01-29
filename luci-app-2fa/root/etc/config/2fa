@@ -1,0 +1,8 @@
+config settings 'settings'
+	option enabled '0'
+
+config login 'root'
+	option key ''
+	option type 'totp'
+	option step '30'
+	option counter '0'
