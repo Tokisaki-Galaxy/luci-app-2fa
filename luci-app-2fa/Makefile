@@ -7,8 +7,6 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-2fa
-PKG_VERSION:=1.0.0
-PKG_RELEASE:=1
 
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=Tokiskai Galaxy <moebest@outlook.jp>
