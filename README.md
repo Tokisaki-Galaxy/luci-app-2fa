@@ -4,7 +4,7 @@
 <img src="https://img.shields.io/badge/License-Apache%202.0-green?style=flat-square" alt="License" />
 <img src="https://img.shields.io/badge/LuCI-Web%20Interface-orange?style=flat-square&logo=lua" alt="LuCI" />
 
-# 🔐 luCI-App-2FA
+# 🔐 LuCI-App-2FA
 
 **LuCI 2-Factor Authentication (2FA) app for OpenWrt**
 
@@ -33,17 +33,20 @@ This package adds two-factor authentication support to the LuCI web interface, e
 
 ### 📦 Installation
 
-#### From OpenWrt Package Repository
+#### Install from Custom opkg Feed
 
 ```bash
+wget https://tokisaki-galaxy.github.io/luci-app-2fa/all/key-build.pub -O /tmp/key-build.pub
+opkg-key add /tmp/key-build.pub
+echo "src/gz tailscale_community https://tokisaki-galaxy.github.io/luci-app-2fa/all" >> /etc/opkg/customfeeds.conf
 opkg update
 opkg install luci-app-2fa
 ```
 
 #### Manual Installation
 
-1. Copy the package files to your OpenWrt system
-2. Restart rpcd: `/etc/init.d/rpcd restart`
+1. Download [Release package](https://github.com/Tokisaki-Galaxy/luci-app-2fa/releases)
+2. Uplaod the package to your OpenWrt system and install it
 3. Access LuCI and navigate to System → 2-Factor Auth
 
 ### ⚙️ Configuration
@@ -98,17 +101,20 @@ OpenWrt 的 LuCI 双因素认证（2FA）应用。
 
 ### 📦 安装方式
 
-#### 从 OpenWrt 官方源安装
+#### 从自定义opkg软件源安装
 
 ```bash
+wget https://tokisaki-galaxy.github.io/luci-app-2fa/all/key-build.pub -O /tmp/key-build.pub
+opkg-key add /tmp/key-build.pub
+echo "src/gz tailscale_community https://tokisaki-galaxy.github.io/luci-app-2fa/all" >> /etc/opkg/customfeeds.conf
 opkg update
 opkg install luci-app-2fa
 ```
 
 #### 手动安装
 
-1. 将软件包文件复制到您的 OpenWrt 系统
-2. 重启 rpcd: `/etc/init.d/rpcd restart`
+1. 下载 [Release package](https://github.com/Tokisaki-Galaxy/luci-app-2fa/releases)
+2. 将软件包上传到您的 OpenWrt 系统并安装
 3. 访问 LuCI 并导航到 系统 → 双因素认证
 
 ### ⚙️ 配置步骤
