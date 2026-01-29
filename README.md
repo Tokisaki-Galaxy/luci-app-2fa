@@ -6,9 +6,8 @@
 
 # 🔐 [WIP]LuCI-App-2FA
 
-# PLEASE DO NOT DOWNLOAD AND USE THIS REPO NOW, IT IS STILL UNDER DEVELOPMENT.
-
-# UNTIL IT IS MARKED AS STABLE, PLEASE WAIT.
+## ⚠️ 必须配合 [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281) PR 使用！  
+**Please follow and watch [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281) — This plugin requires the new authentication plugin interface from this PR!**
 
 **LuCI 2-Factor Authentication (2FA) app for OpenWrt**
 
@@ -19,6 +18,11 @@
 ---
 
 ## English
+
+> **Important:**  
+> This repository **must be used together with the new authentication plugin interface** provided by [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281).  
+> The PR modifies LuCI's authentication logic to support plugins (see [`luci-patch`](luci-patch/README.md)), which is required for 2FA to work.  
+> If you build LuCI yourself, you need to manually apply the patch in the `luci-patch` directory.
 
 LuCI 2-Factor Authentication (2FA) app for OpenWrt.
 
@@ -36,6 +40,15 @@ This package adds two-factor authentication support to the LuCI web interface, e
 ![2FA Settings Page](https://github.com/user-attachments/assets/385ed6de-f30c-4cd1-9881-2516a8c05152)
 
 ### 📦 Installation
+
+This plugin **requires the new authentication plugin mechanism** introduced in [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281).  
+If you are building your own LuCI, you must apply the patch in [`luci-patch/0001-add-auth-plugin-mechanism.patch`](luci-patch/0001-add-auth-plugin-mechanism.patch):
+
+```bash
+# In your LuCI source directory
+cd feeds/luci
+patch -p1 < /path/to/luci-app-2fa/luci-patch/0001-add-auth-plugin-mechanism.patch
+```
 
 #### Install from Custom opkg Feed
 
@@ -104,6 +117,15 @@ OpenWrt 的 LuCI 双因素认证（2FA）应用。
 ![2FA 设置页面](https://github.com/user-attachments/assets/385ed6de-f30c-4cd1-9881-2516a8c05152)
 
 ### 📦 安装方式
+
+本插件**必须依赖 [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281) PR 引入的新认证插件机制**。  
+如果你自行编译 LuCI，请在 [`luci-patch/0001-add-auth-plugin-mechanism.patch`](luci-patch/0001-add-auth-plugin-mechanism.patch) 目录下手动打 patch：
+
+```bash
+# 在你的 LuCI 源码目录下
+cd feeds/luci
+patch -p1 < /path/to/luci-app-2fa/luci-patch/0001-add-auth-plugin-mechanism.patch
+```
 
 #### 从自定义opkg软件源安装
 
