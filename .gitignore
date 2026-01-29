@@ -1,0 +1,23 @@
+# Build artifacts
+*.o
+*.a
+*.so
+*.ipk
+
+# Dependencies
+node_modules/
+/luci/
+
+# Editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
