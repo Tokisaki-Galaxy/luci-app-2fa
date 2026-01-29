@@ -336,4 +336,6 @@ function get_otp(username)
 }
 
 // Output OTP with zero-padding to 6 digits
-printf("%06d", get_otp("root"));
+// Accept username as first argument, default to 'root'
+let username = ARGV[0] || 'root';
+printf("%06d", get_otp(username));

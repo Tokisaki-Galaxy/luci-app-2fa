@@ -6,6 +6,26 @@
 import { popen, open } from 'fs';
 import { cursor } from 'uci';
 
+// Constant-time string comparison to prevent timing attacks
+function constant_time_compare(a, b) {
+	if (length(a) != length(b))
+		return false;
+
+	let result = 0;
+	for (let i = 0; i < length(a); i++) {
+		result = result | (ord(a, i) ^ ord(b, i));
+	}
+	return result == 0;
+}
+
+// Sanitize username to prevent command injection
+function sanitize_username(username) {
+	// Only allow alphanumeric characters, underscore, dash, and dot
+	if (!match(username, /^[a-zA-Z0-9_\-\.]+$/))
+		return null;
+	return username;
+}
+
 function generateBase32Key(keyLength) {
 	let chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 	let key = '';
@@ -36,16 +56,59 @@ function generateBase32Key(keyLength) {
 }
 
 const methods = {
+	// Check if 2FA is enabled - accessible without authentication for login flow
+	isEnabled: {
+		args: { username: '' },
+		call: function(request) {
+			let ctx = cursor();
+			let username = request.args.username || 'root';
+
+			// Sanitize username
+			let safe_username = sanitize_username(username);
+			if (!safe_username) {
+				return { enabled: false };
+			}
+
+			// Check if 2FA is globally enabled
+			let enabled = ctx.get('2fa', 'settings', 'enabled');
+			if (enabled != '1') {
+				return { enabled: false };
+			}
+
+			// Check if user has a key configured
+			let key = ctx.get('2fa', safe_username, 'key');
+			if (!key || key == '') {
+				return { enabled: false };
+			}
+
+			return { enabled: true };
+		}
+	},
+
 	verifyOTP: {
-		args: { otp: '' },
+		args: { otp: '', username: '' },
 		call: function(request) {
 			let otp = request.args.otp;
+			let username = request.args.username || 'root';
 			let ctx = cursor();
+
+			// Sanitize username to prevent command injection
+			let safe_username = sanitize_username(username);
+			if (!safe_username) {
+				return { result: false };
+			}
 
 			// Check if 2FA is enabled
 			let enabled = ctx.get('2fa', 'settings', 'enabled');
 			if (enabled != '1') {
 				// 2FA not enabled, allow login without OTP
+				return { result: true };
+			}
+
+			// Check if user has a key configured
+			let key = ctx.get('2fa', safe_username, 'key');
+			if (!key || key == '') {
+				// No key configured for this user, allow login without OTP
 				return { result: true };
 			}
 
@@ -55,7 +118,7 @@ const methods = {
 			// Trim and normalize input
 			otp = trim(otp);
 			
-			let fd = popen('/usr/libexec/generate_otp.uc');
+			let fd = popen('/usr/libexec/generate_otp.uc ' + safe_username);
 			if (!fd)
 				return { result: false };
 
@@ -65,7 +128,8 @@ const methods = {
 			// Trim generated OTP
 			verify_otp = trim(verify_otp);
 
-			return { result: verify_otp == otp };
+			// Use constant-time comparison to prevent timing attacks
+			return { result: constant_time_compare(verify_otp, otp) };
 		}
 	},
 
