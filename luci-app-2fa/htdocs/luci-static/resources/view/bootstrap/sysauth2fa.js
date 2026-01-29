@@ -10,8 +10,8 @@ return view.extend({
 		var passwordInput = document.getElementById('luci_password');
 		var usernameInput = document.getElementById('luci_username');
 
-		// Determine if we're in 2FA mode based on whether OTP field is visible
-		var requires2FA = otpInput && otpInput.parentElement.parentElement.style.display !== 'none';
+		// Determine if we're in 2FA mode based on whether OTP field exists
+		var requires2FA = otpInput !== null;
 
 		var dlg = ui.showModal(
 			requires2FA ? _('Two-Factor Authentication') : _('Authorization Required'),
@@ -28,27 +28,23 @@ return view.extend({
 		}
 
 		function handleSubmit() {
-			// Basic validation
+			var password = passwordInput ? passwordInput.value : '';
+			
+			if (!password) {
+				if (passwordInput) passwordInput.focus();
+				return;
+			}
+
 			if (!requires2FA) {
 				// Normal login mode
 				var username = usernameInput ? usernameInput.value : '';
-				var password = passwordInput ? passwordInput.value : '';
 
 				if (!username) {
 					if (usernameInput) usernameInput.focus();
 					return;
 				}
-				if (!password) {
-					if (passwordInput) passwordInput.focus();
-					return;
-				}
-
-				// Store password for 2FA step
-				try {
-					sessionStorage.setItem('luci_2fa_pending_pw', password);
-				} catch(e) {}
 			} else {
-				// 2FA mode
+				// 2FA mode - also need OTP
 				var otp = otpInput ? otpInput.value : '';
 
 				if (!otp || otp.length < 6) {
@@ -73,9 +69,7 @@ return view.extend({
 		});
 
 		// Focus appropriate input
-		if (requires2FA && otpInput) {
-			otpInput.focus();
-		} else if (passwordInput && passwordInput.type !== 'hidden') {
+		if (passwordInput) {
 			passwordInput.focus();
 		} else if (usernameInput) {
 			usernameInput.focus();

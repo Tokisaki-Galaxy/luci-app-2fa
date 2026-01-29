@@ -25,7 +25,7 @@
 		<h2 name="content">{{ requires_2fa ? _('Two-Factor Authentication') : _('Authorization Required') }}</h2>
 		<div class="cbi-map-descr">
 			{% if (requires_2fa): %}
-				{{ _('Please enter the one-time password from your authenticator app.') }}
+				{{ _('Please enter your password and the one-time password from your authenticator app.') }}
 			{% else %}
 				{{ _('Please enter your username and password.') }}
 			{% endif %}
@@ -38,15 +38,16 @@
 					<input class="cbi-input-text" type="text" name="luci_username" value="{{ entityencode(duser, true) }}" />
 				</div>
 			</div>
-			<div class="cbi-value cbi-value-last">
+			{% else %}
+			<input type="hidden" name="luci_username" value="{{ entityencode(duser, true) }}" />
+			{% endif %}
+			<div class="cbi-value">
 				<label class="cbi-value-title">{{ _('Password') }}</label>
 				<div class="cbi-value-field">
 					<input class="cbi-input-text" type="password" name="luci_password" />
 				</div>
 			</div>
-			{% else %}
-			<input type="hidden" name="luci_username" value="{{ entityencode(duser, true) }}" />
-			<input type="hidden" name="luci_password" id="luci_password" value="" />
+			{% if (requires_2fa): %}
 			<div class="cbi-value cbi-value-last">
 				<label class="cbi-value-title">{{ _('One-Time Password') }}</label>
 				<div class="cbi-value-field">
@@ -77,37 +78,10 @@
 %}
 
 <script>
-	var input = document.getElementsByName('{{ requires_2fa ? "luci_otp" : "luci_password" }}')[0];
+	var input = document.querySelector('input[name="luci_password"]');
 
 	if (input)
 		input.focus();
-
-	// Store/restore password for 2FA flow
-	(function() {
-		var requires2FA = {{ requires_2fa ? 'true' : 'false' }};
-		var pwField = document.querySelector('input[name="luci_password"]');
-
-		if (!requires2FA) {
-			// Store password before form submission
-			var form = document.querySelector('form');
-			form.addEventListener('submit', function() {
-				if (pwField && pwField.value) {
-					try {
-						sessionStorage.setItem('luci_2fa_pending_pw', pwField.value);
-					} catch(e) {}
-				}
-			});
-		} else {
-			// Restore password for 2FA submission
-			try {
-				var storedPassword = sessionStorage.getItem('luci_2fa_pending_pw');
-				if (storedPassword && pwField) {
-					pwField.value = storedPassword;
-					sessionStorage.removeItem('luci_2fa_pending_pw');
-				}
-			} catch(e) {}
-		}
-	})();
 
 	if (document.location.protocol != 'https:') {
 		{{ https_ports }}.forEach(function(port) {

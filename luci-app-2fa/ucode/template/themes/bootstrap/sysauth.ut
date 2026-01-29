@@ -26,7 +26,12 @@
 				</div>
 				{% else %}
 				<input type="hidden" name="luci_username" value="{{ entityencode(duser, true) }}">
-				<input type="hidden" name="luci_password" id="luci_password" value="">
+				<div class="cbi-value">
+					<label class="cbi-value-title" for="luci_password">{{ _('Password') }}</label>
+					<div class="cbi-value-field">
+						<input name="luci_password" id="luci_password" type="password" autocomplete="current-password">
+					</div>
+				</div>
 				<div class="cbi-value">
 					<label class="cbi-value-title" for="luci_otp">{{ _('One-Time Password') }}</label>
 					<div class="cbi-value-field">
@@ -59,38 +64,9 @@
 <div id="view">
 	<div class="spinning">{{ _('Loading view…') }}</div>
 	<script>
-		(function() {
-			var requires2FA = {{ requires_2fa ? 'true' : 'false' }};
-			var storedPassword = null;
-
-			// Store password before navigating away for 2FA
-			if (!requires2FA) {
-				window.addEventListener('beforeunload', function() {
-					var pwField = document.getElementById('luci_password');
-					if (pwField && pwField.value) {
-						try {
-							sessionStorage.setItem('luci_2fa_pending_pw', pwField.value);
-						} catch(e) {}
-					}
-				});
-			} else {
-				// Restore password for 2FA submission
-				try {
-					storedPassword = sessionStorage.getItem('luci_2fa_pending_pw');
-					if (storedPassword) {
-						var pwField = document.getElementById('luci_password');
-						if (pwField) {
-							pwField.value = storedPassword;
-						}
-						sessionStorage.removeItem('luci_2fa_pending_pw');
-					}
-				} catch(e) {}
-			}
-
-			L.require('ui').then(function(ui) {
-				ui.instantiateView('bootstrap.sysauth2fa');
-			});
-		})();
+		L.require('ui').then(function(ui) {
+			ui.instantiateView('bootstrap.sysauth2fa');
+		});
 	</script>
 </div>
 
