@@ -21,6 +21,10 @@ let indexcache = "/tmp/luci-indexcache";
 
 // 2FA helper functions
 function is_2fa_enabled(username) {
+	// Sanitize username first
+	if (!username || !match(username, /^[a-zA-Z0-9_\-\.]+$/))
+		return false;
+
 	let ctx = cursor();
 	let enabled = ctx.get('2fa', 'settings', 'enabled');
 	if (enabled != '1')
@@ -33,14 +37,39 @@ function is_2fa_enabled(username) {
 	return true;
 }
 
+// Constant-time string comparison to prevent timing attacks
+function constant_time_compare(a, b) {
+	if (length(a) != length(b))
+		return false;
+
+	let result = 0;
+	for (let i = 0; i < length(a); i++) {
+		result = result | (ord(a, i) ^ ord(b, i));
+	}
+	return result == 0;
+}
+
+// Sanitize username to prevent command injection
+function sanitize_username(username) {
+	// Only allow alphanumeric characters, underscore, dash, and dot
+	if (!match(username, /^[a-zA-Z0-9_\-\.]+$/))
+		return null;
+	return username;
+}
+
 function verify_2fa_otp(username, otp) {
 	if (!otp || otp == '')
+		return false;
+
+	// Sanitize username to prevent command injection
+	let safe_username = sanitize_username(username);
+	if (!safe_username)
 		return false;
 
 	// Trim and normalize input
 	otp = trim(otp);
 
-	let fd = popen('/usr/libexec/generate_otp.uc ' + username);
+	let fd = popen('/usr/libexec/generate_otp.uc ' + safe_username);
 	if (!fd)
 		return false;
 
@@ -50,7 +79,8 @@ function verify_2fa_otp(username, otp) {
 	// Trim generated OTP
 	verify_otp = trim(verify_otp);
 
-	return verify_otp == otp;
+	// Use constant-time comparison to prevent timing attacks
+	return constant_time_compare(verify_otp, otp);
 }
 
 let http, runtime, tree, luabridge;
