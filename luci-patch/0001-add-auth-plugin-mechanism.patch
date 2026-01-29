@@ -1,5 +1,5 @@
 diff --git a/modules/luci-base/ucode/dispatcher.uc b/modules/luci-base/ucode/dispatcher.uc
-index 0b31a38..c6a21ed 100644
+index 0b31a38..bf07da1 100644
 --- a/modules/luci-base/ucode/dispatcher.uc
 +++ b/modules/luci-base/ucode/dispatcher.uc
 @@ -6,7 +6,6 @@ import { striptags, entityencode } from 'html';
@@ -100,7 +100,8 @@ index 0b31a38..c6a21ed 100644
 +			// Skip invalid plugins silently
 +		}
 +	}
-+
+ 
+-	closelog();
 +	// Sort by priority (lower = first)
 +	auth_plugins = sort(auth_plugins, (a, b) => (a.priority ?? 50) - (b.priority ?? 50));
 +
@@ -169,8 +170,7 @@ index 0b31a38..c6a21ed 100644
 +					plugin: plugin
 +				};
 +			}
- 
--	closelog();
++
 +			syslog("info",
 +				sprintf("luci: auth plugin '%s' verification succeeded for %s from %s",
 +					plugin.name, user || "?", http.getenv("REMOTE_ADDR") || "?"));
@@ -189,15 +189,22 @@ index 0b31a38..c6a21ed 100644
  }
  
  function check_authentication(method) {
-@@ -960,6 +1095,45 @@ dispatch = function(_http, path) {
+@@ -960,6 +1095,61 @@ dispatch = function(_http, path) {
  					return runtime.render('sysauth', scope);
  				}
  
 +				// Check authentication plugins after password verification succeeds
-+				let auth_check = check_auth_plugins(session.data?.username ?? user);
++				// Always use the authenticated username from the session to prevent bypass
++				let auth_user = session.data?.username;
++				if (!auth_user) {
++					// Session doesn't have username, this shouldn't happen but handle gracefully
++					auth_user = user;
++				}
++				
++				let auth_check = check_auth_plugins(auth_user);
 +				if (auth_check.pending) {
 +					// Plugin requires additional authentication - verify it
-+					let auth_verify = verify_auth_plugins(session.data?.username ?? user);
++					let auth_verify = verify_auth_plugins(auth_user);
 +					
 +					if (!auth_verify.success) {
 +						// Additional auth failed or not provided
@@ -208,13 +215,22 @@ index 0b31a38..c6a21ed 100644
 +						http.status(403, 'Forbidden');
 +						http.header('X-LuCI-Login-Required', 'yes');
 +
++						// Determine if user attempted plugin authentication
++						let plugin_auth_attempted = false;
++						for (let field in auth_check.fields ?? []) {
++							if (http.formvalue(field.name) != null) {
++								plugin_auth_attempted = true;
++								break;
++							}
++						}
++
 +						let scope = {
 +							duser: 'root',
 +							fuser: user,
 +							auth_plugin: auth_check.plugin?.name,
 +							auth_fields: auth_check.fields,
 +							auth_message: auth_verify.message ?? auth_check.message,
-+							auth_failed: http.formvalue(auth_check.fields?.[0]?.name) != null
++							auth_failed: plugin_auth_attempted
 +						};
 +						
 +						let theme_sysauth = `themes/${basename(runtime.env.media)}/sysauth`;

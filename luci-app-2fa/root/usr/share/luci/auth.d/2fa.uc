@@ -61,19 +61,26 @@ function verify_otp(username, otp) {
 
 	// Trim and normalize input
 	otp = trim(otp);
+	
+	// Validate OTP format: must be exactly 6 digits
+	if (!match(otp, /^[0-9]{6}$/))
+		return false;
 
-	let fd = fs.popen('/usr/libexec/generate_otp.uc ' + safe_username);
+	// Use array form to prevent shell injection
+	let fd = fs.popen(['/usr/libexec/generate_otp.uc', safe_username]);
 	if (!fd)
 		return false;
 
-	let verify_otp = fd.read('all');
+	let expected_otp = fd.read('all');
 	fd.close();
 
-	// Trim generated OTP
-	verify_otp = trim(verify_otp);
+	// Trim and validate generated OTP
+	expected_otp = trim(expected_otp);
+	if (!match(expected_otp, /^[0-9]{6}$/))
+		return false;
 
 	// Use constant-time comparison to prevent timing attacks
-	return constant_time_compare(verify_otp, otp);
+	return constant_time_compare(expected_otp, otp);
 }
 
 return {
@@ -128,6 +135,10 @@ return {
 	 */
 	verify: function(http, user) {
 		let otp = http.formvalue('luci_otp');
+		
+		// Trim input immediately for consistent validation
+		if (otp)
+			otp = trim(otp);
 		
 		if (!otp || otp == '') {
 			return {
