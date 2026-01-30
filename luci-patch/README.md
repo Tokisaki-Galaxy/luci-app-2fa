@@ -51,41 +51,12 @@ This patch adds a **generic, non-hardcoded authentication plugin mechanism** to 
 
 ## How to Apply
 
-### For OpenWrt Build System
+### For Openwrt Online Patching
 
-Add to your feeds.conf.default or create a patch in your custom files:
+copy `patch` folder file and cover to following files to your OpenWrt system:
 
-```bash
-# In your OpenWrt build directory
-cd feeds/luci
-patch -p1 < /path/to/0001-add-auth-plugin-mechanism.patch
 ```
-
-### For Existing Installation
-
-```bash
-# Backup original files first
-cp /usr/share/ucode/luci/dispatcher.uc /usr/share/ucode/luci/dispatcher.uc.bak
-cp /usr/share/ucode/luci/template/sysauth.ut /usr/share/ucode/luci/template/sysauth.ut.bak
-cp /usr/share/ucode/luci/template/themes/bootstrap/sysauth.ut /usr/share/ucode/luci/template/themes/bootstrap/sysauth.ut.bak
-
-# Apply patch
-cd /usr/share/ucode/luci
-patch -p3 < /path/to/0001-add-auth-plugin-mechanism.patch
+/usr/share/ucode/luci/dispatcher.uc
+/usr/share/ucode/luci/template/sysauth.ut
+/usr/share/ucode/luci/template/themes/bootstrap/sysauth.ut
 ```
-
-## Upstream Submission
-
-This patch is designed to be submitted to the upstream LuCI repository. It:
-
-- Follows LuCI coding style (same indentation, variable naming)
-- Is fully generic (no 2FA-specific code in core files)
-- Is backwards compatible (existing installations work unchanged)
-- Provides a clean plugin API for future authentication extensions
-
-Potential upstream PR: This mechanism could be used for:
-- Two-Factor Authentication (TOTP/HOTP)
-- CAPTCHA verification
-- IP address whitelisting
-- Time-based access restrictions
-- Hardware token authentication (FIDO2/WebAuthn)

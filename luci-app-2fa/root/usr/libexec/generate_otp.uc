@@ -1,27 +1,6 @@
 #!/usr/bin/ucode
 
-// MIT License
-
 // Copyright (c) 2024 Christian Marangi <ansuelsmth@gmail.com>
-
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-
 import { cursor } from 'uci';
 
 function sToc(s) {
@@ -32,31 +11,40 @@ function cTos(c) {
 	return chr(c);
 }
 
-const base32_encode_table = map([
-	"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
-	"M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X",
-	"Y", "Z", "2", "3", "4", "5", "6", "7"
-], sToc);
+function create_base32_decode_table() {
+	let table = {};
+	
+	// A-Z -> 0-25
+	for (let i = 0; i < 26; i++) {
+		table[ord('A') + i] = i;
+		table[ord('a') + i] = i;
+	}
+	
+	// 2-7 -> 26-31
+	for (let i = 0; i < 6; i++) {
+		table[ord('2') + i] = 26 + i;
+	}
+	
+	return table;
+}
+
+const base32_decode_table = create_base32_decode_table();
 
 function strToBin(string)
 {
 	let res = [];
-
 	for (let i = 0; i < length(string); i++)
 		res[i] = ord(string, i);
-
 	return res;
 }
 
 function intToBin(int)
 {
 	let res = [];
-	
 	res[0] = (int >> 24) & 0xff;
 	res[1] = (int >> 16) & 0xff;
 	res[2] = (int >> 8) & 0xff;
 	res[3] = int & 0xff;
-
 	return res;
 }
 
@@ -65,59 +53,67 @@ function binToStr(bin)
 	return join("", map(bin, cTos));
 }
 
+function binToHex(bin)
+{
+	let hex = "";
+	for (let i = 0; i < length(bin); i++) {
+		let h = sprintf("%02X", bin[i]);
+		hex = hex + h;
+	}
+	return hex;
+}
+
 function circular_shift(val, shift)
 {
 	return ((val << shift) | (val >> (32 - shift))) & 0xFFFFFFFF;
 }
 
-function encode_base32(string)
+// Base32 解码函数
+function decode_base32(string)
 {
-	const binary_string = strToBin(string);
-
-	let pos = 0;
-	let pos_in_byte = 7;
-
-	let consumed = 0;
-	const to_consume = length(string) * 8;
-
-	let out = [];
-	let out_pos = 0;
-	let out_pos_in_byte = 4;
-
-	while (true) {
-		let bit = (binary_string[pos] >> pos_in_byte) & 0x1;
-		out[out_pos] |= bit << out_pos_in_byte;
-		consumed++;
-
-		if (consumed == to_consume)
-			break;
-
-		pos_in_byte--;
-		if (pos_in_byte == -1) {
-			pos_in_byte = 7;
-			pos++;
-		}
-
-		out_pos_in_byte--;
-		if (out_pos_in_byte == -1) {
-			out_pos_in_byte = 4;
-			out_pos++;
+	if (length(string) == 0)
+		return [];
+	
+	// 移除填充字符
+	let clean = "";
+	for (let i = 0; i < length(string); i++) {
+		let c = substr(string, i, 1);
+		if (c != "=" && c != " " && c != "\t" && c != "\n" && c != "\r") {
+			clean = clean + c;
 		}
 	}
-
-	for (let i = 0; i <= out_pos; i++)
-		out[i] = base32_encode_table[out[i]];
-
-	for (let i = 0; i < (8 - (out_pos + 1) % 8); i++)
-		out[(out_pos + 1) + i] = ord("=");
-
-	return binToStr(out);
+	
+	if (length(clean) == 0)
+		return [];
+	
+	let out = [];
+	let buffer = 0;
+	let bits_in_buffer = 0;
+	
+	for (let i = 0; i < length(clean); i++) {
+		let char_code = ord(clean, i);
+		
+		if (!(char_code in base32_decode_table)) {
+			continue;
+		}
+		
+		let value = base32_decode_table[char_code];
+		
+		buffer = (buffer << 5) | value;
+		bits_in_buffer += 5;
+		
+		if (bits_in_buffer >= 8) {
+			bits_in_buffer -= 8;
+			push(out, (buffer >> bits_in_buffer) & 0xff);
+		}
+	}
+	
+	return out;
 }
 
 function calculate_sha1(binary_string) {
 	let len = length(binary_string);
 
-	// Init primitives
 	let h0 = 0x67452301;
 	let h1 = 0xEFCDAB89;
 	let h2 = 0x98BADCFE;
@@ -129,15 +125,12 @@ function calculate_sha1(binary_string) {
 	for (let i = 0; i < len; i++)
 		padded_string[i] = binary_string[i];
 
-	// Add 0x80 = 1 0000000
 	padded_string[len++] = 0x80;
 
-	// Pad of required zeros
 	let to_pad = 64 - ((len + 8) % 64);
 	for (let i = 0; i < to_pad; i++)
 		padded_string[len++] = 0x0;
 
-	// Add length 8 bytes (big endian)
 	padded_string[len++] = 0x0;
 	padded_string[len++] = 0x0;
 	padded_string[len++] = 0x0;
@@ -147,11 +140,9 @@ function calculate_sha1(binary_string) {
 	padded_string[len++] = 0x0;
 	padded_string[len++] = length(binary_string) * 8;
 
-
 	for (let i = 0; i < len; i += 64) {
 		let block = [];
 
-		// Convert section to 16 32 bytes block
 		for (let i2 = 0, j = 0; i2 < 16; i2++, j += 4) {
 			block[i2] = padded_string[i + j] << 24;
 			block[i2] |= padded_string[i + j + 1] << 16;
@@ -159,11 +150,9 @@ function calculate_sha1(binary_string) {
 			block[i2] |= padded_string[i + j + 3];
 		}
 
-		// Expand to 80 bytes block
 		for (let j = 16; j < 80; j++)
 			block[j] = circular_shift(block[j - 3] ^ block[j - 8] ^ block[j - 14] ^ block[j - 16], 1);
 
-		// Init primitives for block
 		let a = h0;
 		let b = h1;
 		let c = h2;
@@ -174,7 +163,6 @@ function calculate_sha1(binary_string) {
 			let f = 0;
 			let k = 0;
 
-			// Setup range constants
 			if (j < 20) {
 				f = (b & c) | ((~b) & d);
 				k = 0x5A827999;
@@ -197,7 +185,6 @@ function calculate_sha1(binary_string) {
 			a = temp;
 		}
 
-		// Update hash values
 		h0 = (h0 + a) & 0xFFFFFFFF;
 		h1 = (h1 + b) & 0xFFFFFFFF;
 		h2 = (h2 + c) & 0xFFFFFFFF;
@@ -262,80 +249,57 @@ function calculate_hmac_sha1(key, message) {
 	return hmac;
 }
 
-function calculate_hotp(key, counter)
-{
-	// The key from UCI is already plain text, encode it to base32 for HMAC
-	const secret = encode_base32(key);
-	const counter_bytes = [ 0x0, 0x0, 0x0, 0x0,
-				(counter >> 24) & 0xff,
-				(counter >> 16) & 0xff,
-				(counter >> 8) & 0xff,
-				counter & 0xff ];
-
-	const digest = calculate_hmac_sha1(secret, binToStr(counter_bytes));
-
-	const offset_bits = digest[19] & 0xf;
-
+// 测试函数
+function test_totp() {
+	let key = "X6XB6XVLZLWWHX5G";
+	
+	// 解码密钥
+	let secret_binary = decode_base32(key);
+	
+	printf("密钥 (Base32): %s\n", key);
+	printf("密钥 (解码后): %s\n", binToHex(secret_binary));
+	printf("密钥长度: %d 字节\n\n", length(secret_binary));
+	
+	// 2026-01-31 06:20:20 UTC = 1769840420
+	let timestamp = 1769840420;
+	let step = 30;
+	let counter = int(timestamp / step);
+	
+	printf("时间戳: %d\n", timestamp);
+	printf("计数器: %d\n", counter);
+	printf("计数器 (hex): 0x%08X\n\n", counter);
+	
+	// 计数器字节
+	let counter_bytes = [ 0x0, 0x0, 0x0, 0x0,
+			      (counter >> 24) & 0xff,
+			      (counter >> 16) & 0xff,
+			      (counter >> 8) & 0xff,
+			      counter & 0xff ];
+	
+	printf("计数器字节: %s\n\n", binToHex(counter_bytes));
+	
+	// 计算 HMAC-SHA1
+	let digest = calculate_hmac_sha1(binToStr(secret_binary), binToStr(counter_bytes));
+	
+	printf("HMAC-SHA1: %s\n\n", binToHex(digest));
+	
+	// 动态截断
+	let offset_bits = digest[19] & 0xf;
+	
+	printf("Offset: %d\n", offset_bits);
+	
 	let p = [];
 	for (let i = 0; i < 4; i++)
 		p[i] = digest[offset_bits+i];
-
-	const snum = (p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3]) & 0x7fffffff;
-	const otp = snum % 10 ** 6;
-
-	return otp;
+	
+	printf("截断 4 字节: %s\n", binToHex(p));
+	
+	let snum = (p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3]) & 0x7fffffff;
+	printf("32位整数: %d (0x%08X)\n", snum, snum);
+	
+	let otp = snum % 10 ** 6;
+	
+	printf("OTP: %06d\n", otp);
 }
 
-function get_otp(username)
-{
-	const ctx = cursor();
-
-	let key = ctx.get('2fa', username, 'key');
-	if (!key) {
-		exit(1);
-	}
-
-	let otp_type = ctx.get('2fa', username, 'type');
-	let counter = 0;
-
-	// Time-based OTP (require synced time with world)
-	// 
-	// Step is used to divide epoch in n step and calculate
-	// the counter
-	if (otp_type == "totp") {
-		let step = ctx.get('2fa', username, 'step');
-		if (!step) {
-			exit(1);
-		}
-
-		counter = int(time() / int(step));
-	// Counter-based OTP
-	// 
-	// OTP is calculated from the counter value. Each different
-	// counter will generate a different password.
-	} else if (otp_type == "hotp") {
-		counter = ctx.get('2fa', username, 'counter');
-		if (!counter) {
-			exit(1);
-		}
-		counter = int(counter);
-	} else {
-		exit(1);
-	}
-
-	const otp = calculate_hotp(key, counter);
-
-	// With HOTP increment saved counter since we just
-	// generated a new OTP.
-	if (otp_type == "hotp") {
-		ctx.set('2fa', username, 'counter', int(counter) + 1);
-		ctx.commit('2fa');
-	}
-
-	return otp;
-}
-
-// Output OTP with zero-padding to 6 digits
-// Accept username as first argument, default to 'root'
-let username = ARGV[0] || 'root';
-printf("%06d", get_otp(username));
+test_totp();
