@@ -64,13 +64,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/openwrt-docker-image.tar
-          key: openwrt-docker-${{ runner.os }}-openwrt-rootfs-x86-64-23.05.5
+          key: openwrt-docker-${{ runner.os }}-openwrt-rootfs-x86-64-24.10.4
 
       - name: Pull and Save OpenWrt Docker Image
         if: steps.cache-openwrt-docker.outputs.cache-hit != 'true'
         run: |
-          docker pull openwrt/rootfs:x86-64-23.05.5
-          docker save openwrt/rootfs:x86-64-23.05.5 -o /tmp/openwrt-docker-image.tar
+          docker pull openwrt/rootfs:x86-64-24.10.4
+          docker save openwrt/rootfs:x86-64-24.10.4 -o /tmp/openwrt-docker-image.tar
 
       - name: Load OpenWrt Docker Image from Cache
         if: steps.cache-openwrt-docker.outputs.cache-hit == 'true'
@@ -79,7 +79,7 @@ jobs:
 
       - name: Verify OpenWrt Docker Image
         run: |
-          docker images openwrt/rootfs:x86-64-23.05.5 --format "{{.Repository}}:{{.Tag}}" | grep -q "openwrt/rootfs:x86-64-23.05.5" && echo "OpenWrt Docker image verified successfully" || (echo "ERROR: OpenWrt Docker image not found" && exit 1)
+          docker images openwrt/rootfs:x86-64-24.10.4 --format "{{.Repository}}:{{.Tag}}" | grep -q "openwrt/rootfs:x86-64-24.10.4" && echo "OpenWrt Docker image verified successfully" || (echo "ERROR: OpenWrt Docker image not found" && exit 1)
           echo "OpenWrt Docker environment ready for plugin debugging"
 
       - name: Test Docker Communication
@@ -88,18 +88,18 @@ jobs:
 
           # Test 1: Basic container execution
           echo "Test 1: Running basic command in OpenWrt container..."
-          docker run --rm openwrt/rootfs:x86-64-23.05.5 /bin/ash -c "echo 'Hello from OpenWrt container!'"
+          docker run --rm openwrt/rootfs:x86-64-24.10.4 /bin/ash -c "echo 'Hello from OpenWrt container!'"
           
           # Test 2: Check OpenWrt version
           echo "Test 2: Checking OpenWrt version..."
-          docker run --rm openwrt/rootfs:x86-64-23.05.5 /bin/ash -c "cat /etc/openwrt_release"
+          docker run --rm openwrt/rootfs:x86-64-24.10.4 /bin/ash -c "cat /etc/openwrt_release"
           
           # Test 3: Test volume mounting with content verification
           echo "Test 3: Testing volume mount..."
           TEST_CONTENT="test_content_$(date +%s)"
           TEST_FILE="/tmp/test_mount_$$_$RANDOM.txt"
           echo "$TEST_CONTENT" > "$TEST_FILE"
-          RESULT=$(docker run --rm -v "$TEST_FILE":/root/test_mount.txt openwrt/rootfs:x86-64-23.05.5 /bin/ash -c "cat /root/test_mount.txt")
+          RESULT=$(docker run --rm -v "$TEST_FILE":/root/test_mount.txt openwrt/rootfs:x86-64-24.10.4 /bin/ash -c "cat /root/test_mount.txt")
           rm -f "$TEST_FILE"
           if [ "$RESULT" = "$TEST_CONTENT" ]; then
             echo "Volume mount test passed: content matches"
@@ -116,12 +116,12 @@ jobs:
           # 2. Run update to populate package lists
           # 3. Install a small package ('file') to verify installation works
           # All running in the same container shell to persist state
-          OPKG_TEST_CMD="mkdir -p /var/lock/ && opkg update && opkg install file && which file && echo 'Package installation verified!'"
+          OPKG_TEST_CMD="if [ ! -d ./scripts ] && [ -f ./setup.sh ]; then sh ./setup.sh; fi && mkdir -p /var/lock/ && opkg update && opkg install file && which file && echo 'Package installation verified!'"
           
-          if docker run --rm openwrt/rootfs:x86-64-23.05.5 /bin/ash -c "$OPKG_TEST_CMD"; then
+          if docker run --rm openwrt/rootfs:x86-64-24.10.4 /bin/ash -c "$OPKG_TEST_CMD"; then
             echo "opkg update and install succeeded"
             # Optional: List installed packages to show 'file' is there
-            # docker run --rm openwrt/rootfs:x86-64-23.05.5 /bin/ash -c "mkdir -p /var/lock/ && opkg list-installed | grep file" 
+            # docker run --rm openwrt/rootfs:x86-64-24.10.4 /bin/ash -c "mkdir -p /var/lock/ && opkg list-installed | grep file" 
           else
             echo "Note: opkg test failed"
             exit 1 
@@ -129,7 +129,7 @@ jobs:
           
           # Test 5: Test network connectivity from container (via HTTP/TCP)
           echo "Test 5: Testing network connectivity via HTTP..."
-          if docker run --rm openwrt/rootfs:x86-64-23.05.5 /bin/ash -c "wget -q --spider http://www.google.com"; then
+          if docker run --rm openwrt/rootfs:x86-64-24.10.4 /bin/ash -c "wget -q --spider http://www.google.com"; then
             echo "Network connectivity: Available (TCP/HTTP)"
           else
             echo "Network connectivity: Restricted or no internet access"
@@ -142,7 +142,7 @@ jobs:
           CONTAINER_NAME="openwrt-luci-test-$$"
           
           # Start container with all services in correct order
-          docker run -d --name "$CONTAINER_NAME" -p 8080:80 openwrt/rootfs:x86-64-23.05.5 /bin/ash -c '
+          docker run -d --name "$CONTAINER_NAME" -p 8080:80 openwrt/rootfs:x86-64-24.10.4 /bin/ash -c '
             mkdir -p /var/lock /var/run
             opkg update && opkg install luci luci-base luci-compat
             # Critical: Start services in correct order
