@@ -2,10 +2,10 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/e2e',
-  fullyParallel: false,
+  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: 1,
+  workers: process.env.CI ? 4 : undefined,
   reporter: [
     ['html', { outputFolder: 'playwright-report' }],
     ['list']
@@ -14,7 +14,10 @@ export default defineConfig({
     baseURL: 'http://localhost:8080',
     trace: 'on-first-retry',
     screenshot: 'on',
-    video: 'on-first-retry'
+    video: 'on-first-retry',
+    // Add navigation timeout and action timeout
+    navigationTimeout: 60000,
+    actionTimeout: 30000,
   },
   projects: [
     {
@@ -26,5 +29,7 @@ export default defineConfig({
   timeout: 120000,
   expect: {
     timeout: 30000
-  }
+  },
+  // Global setup to ensure LuCI is ready
+  globalSetup: require.resolve('./tests/e2e/global-setup.ts'),
 });

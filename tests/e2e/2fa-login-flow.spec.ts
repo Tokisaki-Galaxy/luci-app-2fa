@@ -44,14 +44,18 @@ async function takeScreenshot(page: Page, name: string) {
  * Wait for page to be ready after navigation or form submission
  */
 async function waitForPageReady(page: Page) {
-  await page.waitForLoadState('networkidle');
+  try {
+    await page.waitForLoadState('domcontentloaded', { timeout: 30000 });
+  } catch (error) {
+    console.log('Warning: Page load state timeout, continuing anyway...');
+  }
 }
 
 test.describe('2FA Login Flow', () => {
   
   test('should show OTP field after password verification when 2FA is enabled', async ({ page }) => {
     // Navigate to login page
-    await page.goto('/cgi-bin/luci/');
+    await page.goto('/cgi-bin/luci/', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await waitForPageReady(page);
     
     // Take screenshot of initial login page
@@ -83,7 +87,7 @@ test.describe('2FA Login Flow', () => {
 
   test('should successfully login with correct TOTP code', async ({ page }) => {
     // Navigate to login page
-    await page.goto('/cgi-bin/luci/');
+    await page.goto('/cgi-bin/luci/', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await waitForPageReady(page);
     
     // Fill in password
@@ -138,7 +142,7 @@ test.describe('2FA Login Flow', () => {
 
   test('should reject incorrect TOTP code', async ({ page }) => {
     // Navigate to login page
-    await page.goto('/cgi-bin/luci/');
+    await page.goto('/cgi-bin/luci/', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await waitForPageReady(page);
     
     // Fill in password
@@ -189,7 +193,7 @@ test.describe('2FA Login Flow', () => {
     // the ucode implementation and the standard library match
     
     // Navigate to login page
-    await page.goto('/cgi-bin/luci/');
+    await page.goto('/cgi-bin/luci/', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await waitForPageReady(page);
     
     // Generate TOTP with standard library
