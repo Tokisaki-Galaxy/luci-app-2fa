@@ -21,7 +21,7 @@ function constant_time_compare(a, b) {
 // Sanitize username to prevent command injection
 function sanitize_username(username) {
 	// Only allow alphanumeric characters, underscore, dash, and dot
-	if (!match(username, /^[a-zA-Z0-9_\-\.]+$/))
+	if (!match(username, /^[a-zA-Z0-9_.-]+$/))
 		return null;
 	return username;
 }

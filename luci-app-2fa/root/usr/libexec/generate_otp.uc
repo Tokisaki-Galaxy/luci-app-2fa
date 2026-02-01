@@ -3,10 +3,6 @@
 // Copyright (c) 2024 Christian Marangi <ansuelsmth@gmail.com>
 import { cursor } from 'uci';
 
-function sToc(s) {
-	return ord(s);
-}
-
 function cTos(c) {
 	return chr(c);
 }
@@ -53,28 +49,17 @@ function binToStr(bin)
 	return join("", map(bin, cTos));
 }
 
-function binToHex(bin)
-{
-	let hex = "";
-	for (let i = 0; i < length(bin); i++) {
-		let h = sprintf("%02X", bin[i]);
-		hex = hex + h;
-	}
-	return hex;
-}
-
 function circular_shift(val, shift)
 {
 	return ((val << shift) | (val >> (32 - shift))) & 0xFFFFFFFF;
 }
 
-// Base32 解码函数
 function decode_base32(string)
 {
 	if (length(string) == 0)
 		return [];
 	
-	// 移除填充字符
+	// Remove padding and whitespace
 	let clean = "";
 	for (let i = 0; i < length(string); i++) {
 		let c = substr(string, i, 1);
@@ -93,11 +78,10 @@ function decode_base32(string)
 	for (let i = 0; i < length(clean); i++) {
 		let char_code = ord(clean, i);
 		
-		if (!(char_code in base32_decode_table)) {
+		let value = base32_decode_table[char_code];
+		if (value === null || value === undefined) {
 			continue;
 		}
-		
-		let value = base32_decode_table[char_code];
 		
 		buffer = (buffer << 5) | value;
 		bits_in_buffer += 5;
@@ -249,57 +233,117 @@ function calculate_hmac_sha1(key, message) {
 	return hmac;
 }
 
-// 测试函数
-function test_totp() {
-	let key = "X6XB6XVLZLWWHX5G";
+function generate_totp(secret, timestamp, step) {
+	// Decode the Base32 secret key
+	let secret_binary = decode_base32(secret);
 	
-	// 解码密钥
-	let secret_binary = decode_base32(key);
+	if (length(secret_binary) == 0)
+		return null;
 	
-	printf("密钥 (Base32): %s\n", key);
-	printf("密钥 (解码后): %s\n", binToHex(secret_binary));
-	printf("密钥长度: %d 字节\n\n", length(secret_binary));
-	
-	// 2026-01-31 06:20:20 UTC = 1769840420
-	let timestamp = 1769840420;
-	let step = 30;
+	// Calculate counter from timestamp
 	let counter = int(timestamp / step);
 	
-	printf("时间戳: %d\n", timestamp);
-	printf("计数器: %d\n", counter);
-	printf("计数器 (hex): 0x%08X\n\n", counter);
+	// Convert counter to 8-byte array (big-endian)
+	let counter_bytes = [
+		0x0, 0x0, 0x0, 0x0,
+		(counter >> 24) & 0xff,
+		(counter >> 16) & 0xff,
+		(counter >> 8) & 0xff,
+		counter & 0xff
+	];
 	
-	// 计数器字节
-	let counter_bytes = [ 0x0, 0x0, 0x0, 0x0,
-			      (counter >> 24) & 0xff,
-			      (counter >> 16) & 0xff,
-			      (counter >> 8) & 0xff,
-			      counter & 0xff ];
-	
-	printf("计数器字节: %s\n\n", binToHex(counter_bytes));
-	
-	// 计算 HMAC-SHA1
+	// Calculate HMAC-SHA1
 	let digest = calculate_hmac_sha1(binToStr(secret_binary), binToStr(counter_bytes));
 	
-	printf("HMAC-SHA1: %s\n\n", binToHex(digest));
+	// Dynamic truncation
+	let offset = digest[19] & 0xf;
+	let binary_code = (digest[offset] << 24) | 
+	                  (digest[offset + 1] << 16) |
+	                  (digest[offset + 2] << 8) |
+	                  digest[offset + 3];
 	
-	// 动态截断
-	let offset_bits = digest[19] & 0xf;
+	// Remove sign bit
+	binary_code = binary_code & 0x7fffffff;
 	
-	printf("Offset: %d\n", offset_bits);
+	// Generate 6-digit OTP
+	let otp = binary_code % 1000000;
 	
-	let p = [];
-	for (let i = 0; i < 4; i++)
-		p[i] = digest[offset_bits+i];
-	
-	printf("截断 4 字节: %s\n", binToHex(p));
-	
-	let snum = (p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3]) & 0x7fffffff;
-	printf("32位整数: %d (0x%08X)\n", snum, snum);
-	
-	let otp = snum % 10 ** 6;
-	
-	printf("OTP: %06d\n", otp);
+	return sprintf("%06d", otp);
 }
 
-test_totp();
+function generate_hotp(secret, counter) {
+	// Decode the Base32 secret key
+	let secret_binary = decode_base32(secret);
+	
+	if (length(secret_binary) == 0)
+		return null;
+	
+	// Convert counter to 8-byte array (big-endian)
+	let counter_bytes = [
+		(counter >> 56) & 0xff,
+		(counter >> 48) & 0xff,
+		(counter >> 40) & 0xff,
+		(counter >> 32) & 0xff,
+		(counter >> 24) & 0xff,
+		(counter >> 16) & 0xff,
+		(counter >> 8) & 0xff,
+		counter & 0xff
+	];
+	
+	// Calculate HMAC-SHA1
+	let digest = calculate_hmac_sha1(binToStr(secret_binary), binToStr(counter_bytes));
+	
+	// Dynamic truncation
+	let offset = digest[19] & 0xf;
+	let binary_code = (digest[offset] << 24) | 
+	                  (digest[offset + 1] << 16) |
+	                  (digest[offset + 2] << 8) |
+	                  digest[offset + 3];
+	
+	// Remove sign bit
+	binary_code = binary_code & 0x7fffffff;
+	
+	// Generate 6-digit OTP
+	let otp = binary_code % 1000000;
+	
+	return sprintf("%06d", otp);
+}
+
+// Main execution
+let username = ARGV[0];
+
+if (!username || username == '') {
+	exit(1);
+}
+
+let ctx = cursor();
+
+// Get user configuration
+let otp_type = ctx.get('2fa', username, 'type') || 'totp';
+let secret = ctx.get('2fa', username, 'key');
+
+if (!secret || secret == '') {
+	exit(1);
+}
+
+let otp;
+
+if (otp_type == 'hotp') {
+	// HOTP mode
+	let counter = int(ctx.get('2fa', username, 'counter') || '0');
+	otp = generate_hotp(secret, counter);
+	
+	// Increment counter for next use
+	ctx.set('2fa', username, 'counter', '' + (counter + 1));
+	ctx.commit('2fa');
+} else {
+	// TOTP mode (default)
+	let step = int(ctx.get('2fa', username, 'step') || '30');
+	let timestamp = time();
+	otp = generate_totp(secret, timestamp, step);
+}
+
+if (otp)
+	print(otp);
+else
+	exit(1);
