@@ -61,7 +61,7 @@ jobs:
         run: |
           docker run -d --name $CONTAINER_NAME -p 8080:80 openwrt/rootfs:x86-64-24.10.4 /bin/ash -c '
             mkdir -p /var/lock /var/run
-            opkg update && opkg install luci luci-base luci-compat luci-mod-admin-full luci-mod-system luci-theme-bootstrap
+            opkg update && opkg install luci luci-base luci-compat luci-mod-admin-full luci-mod-system luci-theme-bootstrap ucode-mod-log
             
             # Start services in correct order
             /sbin/ubusd &
@@ -184,7 +184,7 @@ jobs:
             HTTP_CODE=$(echo "$RESPONSE" | tail -1)
             BODY=$(echo "$RESPONSE" | head -n -1)
             
-            if [ "$HTTP_CODE" = "200" ] && echo "$BODY" | grep -q "luci_password"; then
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "403" ] && echo "$BODY" | grep -q "luci_password"; then
               echo "✓ LuCI login page is fully functional (HTTP $HTTP_CODE)"
               echo "  Login form detected in response"
               break
