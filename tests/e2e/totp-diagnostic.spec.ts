@@ -115,6 +115,40 @@ async function screenshot(page: Page, name: string) {
   });
 }
 
+/**
+ * Check if login was successful by examining page content
+ * Returns an object with detailed success indicators for logging
+ */
+async function checkLoginSuccess(page: Page): Promise<{
+  isLoggedIn: boolean;
+  hasLogout: boolean;
+  hasStatusPage: boolean;
+  hasLoginForm: boolean;
+  hasOTPField: boolean;
+  url: string;
+}> {
+  const url = page.url();
+  const pageContent = await page.content();
+
+  const hasLogout = pageContent.includes("Log out") || pageContent.includes("Logout");
+  const hasStatusPage = pageContent.includes("Status") && pageContent.includes("System");
+  const hasLoginForm = pageContent.includes('id="luci_password"');
+  const hasOTPField = pageContent.includes('id="luci_otp"');
+
+  // Login is successful if we have logout link or status page content,
+  // AND no login form AND no OTP field
+  const isLoggedIn = (hasLogout || hasStatusPage) && !hasLoginForm && !hasOTPField;
+
+  return {
+    isLoggedIn,
+    hasLogout,
+    hasStatusPage,
+    hasLoginForm,
+    hasOTPField,
+    url,
+  };
+}
+
 test.describe("TOTP Diagnostic Tests", () => {
   test.beforeAll(async () => {
     console.log("\n========================================");
@@ -285,34 +319,24 @@ test.describe("TOTP Diagnostic Tests", () => {
     await page.waitForTimeout(2000);
     await screenshot(page, "04-after-submit");
 
-    // Step 4: Analyze result
+    // Step 4: Analyze result using shared helper
     console.log("Step 4: Analyzing login result...");
-    const finalUrl = page.url();
+    const loginResult = await checkLoginSuccess(page);
     const pageContent = await page.content();
-
-    console.log(`  Final URL: ${finalUrl}`);
-
-    // Check for various success/failure indicators
-    const isAdminPage = finalUrl.includes("admin") || finalUrl.includes("luci");
-    const hasLoginForm = pageContent.includes('id="luci_password"');
-    const hasOTPField = pageContent.includes('id="luci_otp"');
     const hasErrorMessage =
       pageContent.includes("Invalid username") ||
       pageContent.includes("Invalid one-time password");
-    const hasLogout = pageContent.includes("Log out") || pageContent.includes("Logout");
-    const hasStatusPage = pageContent.includes("Status") && pageContent.includes("System");
 
-    console.log(`  Is on LuCI page:   ${isAdminPage ? "✓ Yes" : "✗ No"}`);
-    console.log(`  Has login form:    ${hasLoginForm ? "✗ Yes (still on login)" : "✓ No"}`);
-    console.log(`  Has OTP field:     ${hasOTPField ? "⚠ Yes (may need retry)" : "✓ No"}`);
+    console.log(`  Final URL: ${loginResult.url}`);
+    console.log(`  Is on LuCI page:   ${loginResult.url.includes("luci") ? "✓ Yes" : "✗ No"}`);
+    console.log(`  Has login form:    ${loginResult.hasLoginForm ? "✗ Yes (still on login)" : "✓ No"}`);
+    console.log(`  Has OTP field:     ${loginResult.hasOTPField ? "⚠ Yes (may need retry)" : "✓ No"}`);
     console.log(`  Has error message: ${hasErrorMessage ? "✗ Yes" : "✓ No"}`);
-    console.log(`  Has logout link:   ${hasLogout ? "✓ Yes (logged in)" : "✗ No"}`);
-    console.log(`  Has status page:   ${hasStatusPage ? "✓ Yes (logged in)" : "✗ No"}`);
+    console.log(`  Has logout link:   ${loginResult.hasLogout ? "✓ Yes (logged in)" : "✗ No"}`);
+    console.log(`  Has status page:   ${loginResult.hasStatusPage ? "✓ Yes (logged in)" : "✗ No"}`);
     console.log("");
 
-    // Login is successful if we have logout link and status page content, AND no login form
-    const loginSuccess = (hasLogout || hasStatusPage) && !hasLoginForm && !hasOTPField;
-    console.log(`  LOGIN RESULT: ${loginSuccess ? "✓ SUCCESS" : "✗ FAILED"}`);
+    console.log(`  LOGIN RESULT: ${loginResult.isLoggedIn ? "✓ SUCCESS" : "✗ FAILED"}`);
     console.log("");
 
     // Extract error message if present
@@ -323,7 +347,7 @@ test.describe("TOTP Diagnostic Tests", () => {
       }
     }
 
-    expect(loginSuccess).toBeTruthy();
+    expect(loginResult.isLoggedIn).toBeTruthy();
   });
 
   test("6. Login with synchronized container time OTP", async ({ page }) => {
@@ -368,20 +392,14 @@ test.describe("TOTP Diagnostic Tests", () => {
     await page.waitForTimeout(2000);
     await screenshot(page, "06-container-time-result");
 
-    const finalUrl = page.url();
-    const pageContent = await page.content();
-    
-    // Login is successful if we have logout link or status page content, AND no login form
-    const hasLogout = pageContent.includes("Log out") || pageContent.includes("Logout");
-    const hasStatusPage = pageContent.includes("Status") && pageContent.includes("System");
-    const hasLoginForm = pageContent.includes('id="luci_password"');
-    const loginSuccess = (hasLogout || hasStatusPage) && !hasLoginForm;
+    // Use shared helper for consistent login success detection
+    const loginResult = await checkLoginSuccess(page);
 
-    console.log(`Final URL: ${finalUrl}`);
-    console.log(`Login success: ${loginSuccess ? "✓ YES" : "✗ NO"}`);
+    console.log(`Final URL: ${loginResult.url}`);
+    console.log(`Login success: ${loginResult.isLoggedIn ? "✓ YES" : "✗ NO"}`);
     console.log("");
 
-    expect(loginSuccess).toBeTruthy();
+    expect(loginResult.isLoggedIn).toBeTruthy();
   });
 
   test("7. Direct ubus verification call test", async () => {
