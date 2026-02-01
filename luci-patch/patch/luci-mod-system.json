@@ -34,19 +34,6 @@
 		}
 	},
 
-	"admin/system/admin/authsettings": {
-		"title": "Authentication",
-		"order": 1.5,
-		"action": {
-			"type": "view",
-			"path": "system/authsettings"
-		},
-		"depends": {
-			"acl": [ "luci-mod-system-config" ],
-			"uci": { "luci": true }
-		}
-	},
-
 	"admin/system/admin/dropbear": {
 		"title": "SSH Access",
 		"order": 2,
@@ -95,6 +82,19 @@
 		},
 		"depends": {
 			"acl": [ "luci-mod-system-repokeys" ]
+		}
+	},
+
+	"admin/system/admin/exauth": {
+		"title": "Authentication",
+		"order": 6,
+		"action": {
+			"type": "view",
+			"path": "system/exauth"
+		},
+		"depends": {
+			"acl": [ "luci-mod-system-config" ],
+			"uci": { "luci": true }
 		}
 	},
 
