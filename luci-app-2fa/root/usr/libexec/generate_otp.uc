@@ -311,6 +311,26 @@ function generate_hotp(secret, counter) {
 
 // Main execution
 let username = ARGV[0];
+// Parse optional flags from remaining arguments
+let no_increment = false;
+let custom_time = null;
+
+for (let i = 1; i < length(ARGV); i++) {
+	let arg = ARGV[i];
+	if (arg == '--no-increment') {
+		no_increment = true;
+	} else if (substr(arg, 0, 7) == '--time=') {
+		let time_str = substr(arg, 7);
+		// Validate that time is numeric only (security: prevent injection)
+		if (match(time_str, /^[0-9]+$/)) {
+			custom_time = int(time_str);
+			// Validate reasonable time range (after year 2000, before year 2100)
+			if (custom_time < 946684800 || custom_time > 4102444800) {
+				custom_time = null;  // Invalid time, use default
+			}
+		}
+	}
+}
 
 if (!username || username == '') {
 	exit(1);
@@ -333,13 +353,16 @@ if (otp_type == 'hotp') {
 	let counter = int(ctx.get('2fa', username, 'counter') || '0');
 	otp = generate_hotp(secret, counter);
 	
-	// Increment counter for next use
-	ctx.set('2fa', username, 'counter', '' + (counter + 1));
-	ctx.commit('2fa');
+	// Only increment counter if not in verification mode
+	if (!no_increment) {
+		ctx.set('2fa', username, 'counter', '' + (counter + 1));
+		ctx.commit('2fa');
+	}
 } else {
 	// TOTP mode (default)
 	let step = int(ctx.get('2fa', username, 'step') || '30');
-	let timestamp = time();
+	// Use custom time if provided (for verification with time window tolerance)
+	let timestamp = (custom_time != null) ? custom_time : time();
 	otp = generate_totp(secret, timestamp, step);
 }
 

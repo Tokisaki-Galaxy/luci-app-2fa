@@ -118,18 +118,54 @@ const methods = {
 			// Trim and normalize input
 			otp = trim(otp);
 			
-			let fd = popen('/usr/libexec/generate_otp.uc ' + safe_username);
-			if (!fd)
-				return { result: false };
-
-			let verify_otp = fd.read('all');
-			fd.close();
+			// Get OTP type to determine verification strategy
+			let otp_type = ctx.get('2fa', safe_username, 'type') || 'totp';
 			
-			// Trim generated OTP
-			verify_otp = trim(verify_otp);
+			if (otp_type == 'hotp') {
+				// HOTP verification: use --no-increment to not consume the counter during verification
+				// SECURITY: safe_username is validated by sanitize_username() to match [a-zA-Z0-9_.-]+
+				let fd = popen('/usr/libexec/generate_otp.uc ' + safe_username + ' --no-increment');
+				if (!fd)
+					return { result: false };
 
-			// Use constant-time comparison to prevent timing attacks
-			return { result: constant_time_compare(verify_otp, otp) };
+				let verify_otp = fd.read('all');
+				fd.close();
+				verify_otp = trim(verify_otp);
+
+				if (constant_time_compare(verify_otp, otp)) {
+					// OTP matches, now increment the counter for HOTP
+					let counter = int(ctx.get('2fa', safe_username, 'counter') || '0');
+					ctx.set('2fa', safe_username, 'counter', '' + (counter + 1));
+					ctx.commit('2fa');
+					return { result: true };
+				}
+				return { result: false };
+			} else {
+				// TOTP verification: check current window and adjacent windows (±1) for time drift tolerance
+				// This handles cases where OTP was generated at the edge of a time window
+				let step = int(ctx.get('2fa', safe_username, 'step') || '30');
+				if (step <= 0) step = 30;  // Ensure valid step value
+				let current_time = time();
+				
+				// Check window offsets: current (0), previous (-1), next (+1)
+				// SECURITY: check_time is derived from time() (integer) and integer arithmetic only
+				// safe_username is already validated by sanitize_username() to match [a-zA-Z0-9_.-]+
+				for (let offset in [0, -1, 1]) {
+					let check_time = int(current_time + (offset * step));  // Explicit int conversion
+					let fd = popen('/usr/libexec/generate_otp.uc ' + safe_username + ' --no-increment --time=' + check_time);
+					if (!fd)
+						continue;
+
+					let verify_otp = fd.read('all');
+					fd.close();
+					verify_otp = trim(verify_otp);
+
+					if (constant_time_compare(verify_otp, otp)) {
+						return { result: true };
+					}
+				}
+				return { result: false };
+			}
 		}
 	},
 
