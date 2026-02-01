@@ -36,40 +36,36 @@ return view.extend({
 			_('When enabled, authentication plugins in /usr/share/luci/auth.d/ will be loaded and used for additional verification during login.'));
 		o.rmempty = false;
 
-		// Plugin settings section - only show if plugins exist
+		// Plugin settings section
+		s = m.section(form.NamedSection, 'sauth', 'internal', _('Authentication Plugins'),
+			_('Enable or disable individual authentication plugins. Disabled plugins will be skipped during login.'));
+		s.anonymous = true;
+
+		// Ensure the sauth section exists
+		s.cfgsections = function() {
+			var sections = uci.sections('luci', 'internal').filter(function(sec) {
+				return sec['.name'] === 'sauth';
+			});
+			if (sections.length === 0) {
+				uci.add('luci', 'internal', 'sauth');
+			}
+			return ['sauth'];
+		};
+
 		if (plugins.length > 0) {
-			s = m.section(form.NamedSection, 'sauth', 'internal', _('Authentication Plugins'),
-				_('Enable or disable individual authentication plugins. Disabled plugins will be skipped during login.'));
-			s.anonymous = true;
-
-			// Ensure the sauth section exists
-			s.cfgsections = function() {
-				var sections = uci.sections('luci', 'internal').filter(function(s) {
-					return s['.name'] === 'sauth';
-				});
-				if (sections.length === 0) {
-					uci.add('luci', 'internal', 'sauth');
-				}
-				return ['sauth'];
-			};
-
 			// Create a Flag option for each plugin
-			// Note: We store as plugin_name_disabled='1' when disabled, so we need to invert the logic
+			// The UCI option stores '_disabled=1' when disabled, so label reflects this
 			for (var i = 0; i < plugins.length; i++) {
 				var plugin = plugins[i];
 				var optionName = plugin.name + '_disabled';
 
 				o = s.option(form.Flag, optionName,
 					_('Disable %s').format(plugin.name),
-					_('Plugin file: %s').format(plugin.filename));
-				o.rmempty = true;
-				o.default = '0';
+					_('Check to disable this plugin. Plugin file: %s').format(plugin.filename));
+				o.rmempty = false;
 			}
 		} else {
 			// Show informational message when no plugins exist
-			s = m.section(form.NamedSection, 'main', 'core', _('Authentication Plugins'));
-			s.anonymous = true;
-
 			o = s.option(form.DummyValue, '_no_plugins');
 			o.rawhtml = true;
 			o.cfgvalue = function() {
