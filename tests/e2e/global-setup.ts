@@ -27,7 +27,10 @@ async function globalSetup(config: FullConfig) {
       // LuCI might return 200 or 403 initially, both are OK as long as we get the login form
       if (response && (response.ok() || response.status() === 403)) {
         // Check if we can actually see login form elements
-        const hasLoginForm = await page.locator('#luci_password').isVisible({ timeout: 5000 }).catch(() => false);
+        const hasLoginForm = await page.locator('#luci_password').isVisible({ timeout: 5000 }).catch((e) => {
+          console.log(`    Form check error: ${e.message}`);
+          return false;
+        });
         
         if (hasLoginForm) {
           console.log('✅ LuCI is ready and responding correctly!');
