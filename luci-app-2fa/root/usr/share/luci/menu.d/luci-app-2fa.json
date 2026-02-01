@@ -1,4 +1,16 @@
 {
+	"admin/system/admin/authsettings": {
+		"title": "Authentication",
+		"order": 1.5,
+		"action": {
+			"type": "view",
+			"path": "system/authsettings"
+		},
+		"depends": {
+			"acl": [ "luci-app-2fa" ],
+			"uci": { "luci": true }
+		}
+	},
 	"admin/system/2fa": {
 		"title": "2-Factor Auth",
 		"order": 95,
