@@ -173,9 +173,35 @@ jobs:
       - name: Create screenshots directory
         run: mkdir -p screenshots
 
+      - name: Additional LuCI health check for E2E tests
+        run: |
+          echo "Performing additional health checks before E2E tests..."
+          MAX_RETRIES=10
+          COUNT=0
+          while [ $COUNT -lt $MAX_RETRIES ]; do
+            # Check if we can access the login page and get valid HTML
+            RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:8080/cgi-bin/luci/ 2>/dev/null || echo "000")
+            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+            BODY=$(echo "$RESPONSE" | head -n -1)
+            
+            if [ "$HTTP_CODE" = "200" ] && echo "$BODY" | grep -q "luci_password"; then
+              echo "✓ LuCI login page is fully functional (HTTP $HTTP_CODE)"
+              echo "  Login form detected in response"
+              break
+            fi
+            
+            echo "  Waiting for login page... ($((COUNT+1))/$MAX_RETRIES) [HTTP: $HTTP_CODE]"
+            sleep 3
+            COUNT=$((COUNT+1))
+          done
+          
+          if [ $COUNT -eq $MAX_RETRIES ]; then
+            echo "Warning: LuCI may not be fully ready, but continuing with tests..."
+          fi
+
       - name: Run Playwright E2E tests
         run: |
-          npx playwright test --reporter=html
+          npx playwright test --reporter=html,list
         env:
           CI: true
 

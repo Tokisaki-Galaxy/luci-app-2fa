@@ -1,34 +1,46 @@
 import { test, expect, Page } from '@playwright/test';
 
 /**
- * Helper function to login to LuCI
+ * Helper function to login to LuCI with retries
  */
-async function login(page: Page, password: string = 'password') {
-  await page.goto('/cgi-bin/luci/');
-  
-  // Wait for the login form to be ready
-  await page.waitForSelector('#luci_password', { timeout: 30000 });
-  
-  // Wait for page to fully render
-  await page.waitForTimeout(1000);
-  
-  // Fill in password using the actual input element
-  await page.locator('#luci_password').fill(password);
-  
-  // Click login button
-  await page.locator('button.cbi-button-positive').click();
-  
-  // Wait for navigation - either redirect to admin or page reload
-  try {
-    await page.waitForURL(/admin/, { timeout: 15000 });
-  } catch {
-    // If redirect doesn't happen, we might still be on login page after successful login
-    // Wait a bit and check the URL
-    await page.waitForTimeout(2000);
-    const url = page.url();
-    if (!url.includes('admin')) {
-      // Try navigating directly to admin page  
-      await page.goto('/cgi-bin/luci/admin/status/overview');
+async function login(page: Page, password: string = 'password', maxRetries: number = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      await page.goto('/cgi-bin/luci/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+      
+      // Wait for the login form to be ready
+      await page.waitForSelector('#luci_password', { timeout: 30000 });
+      
+      // Wait for page to fully render
+      await page.waitForTimeout(1000);
+      
+      // Fill in password using the actual input element
+      await page.locator('#luci_password').fill(password);
+      
+      // Click login button
+      await page.locator('button.cbi-button-positive').click();
+      
+      // Wait for navigation - either redirect to admin or page reload
+      try {
+        await page.waitForURL(/admin/, { timeout: 15000 });
+        return; // Success
+      } catch {
+        // If redirect doesn't happen, we might still be on login page after successful login
+        // Wait a bit and check the URL
+        await page.waitForTimeout(2000);
+        const url = page.url();
+        if (!url.includes('admin')) {
+          // Try navigating directly to admin page  
+          await page.goto('/cgi-bin/luci/admin/status/overview', { waitUntil: 'domcontentloaded', timeout: 15000 });
+          await page.waitForTimeout(2000);
+        }
+        return; // Success
+      }
+    } catch (error) {
+      if (attempt === maxRetries - 1) {
+        throw error; // Re-throw on last attempt
+      }
+      console.log(`Login attempt ${attempt + 1} failed, retrying...`);
       await page.waitForTimeout(2000);
     }
   }
@@ -46,7 +58,7 @@ async function takeScreenshot(page: Page, name: string) {
 
 test.describe('LuCI Login Page', () => {
   test('should display standard login form', async ({ page }) => {
-    await page.goto('/cgi-bin/luci/');
+    await page.goto('/cgi-bin/luci/', { waitUntil: 'domcontentloaded', timeout: 30000 });
     
     // Wait for page to render
     await page.waitForSelector('#luci_password', { timeout: 30000 });
@@ -61,7 +73,7 @@ test.describe('LuCI Login Page', () => {
   });
 
   test('should show error on invalid login', async ({ page }) => {
-    await page.goto('/cgi-bin/luci/');
+    await page.goto('/cgi-bin/luci/', { waitUntil: 'domcontentloaded', timeout: 30000 });
     
     await page.waitForSelector('#luci_password', { timeout: 30000 });
     await page.locator('#luci_password').fill('wrongpassword');
