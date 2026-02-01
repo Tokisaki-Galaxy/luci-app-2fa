@@ -310,7 +310,11 @@ function generate_hotp(secret, counter) {
 }
 
 // Main execution
-let username = ARGV[0] || 'root';
+let username = ARGV[0];
+
+if (!username || username == '') {
+	exit(1);
+}
 
 let ctx = cursor();
 
