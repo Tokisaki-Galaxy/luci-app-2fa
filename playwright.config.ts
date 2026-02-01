@@ -1,4 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -31,5 +36,5 @@ export default defineConfig({
     timeout: 30000
   },
   // Global setup to ensure LuCI is ready
-  globalSetup: require.resolve('./tests/e2e/global-setup.ts'),
+  globalSetup: path.join(__dirname, 'tests/e2e/global-setup.ts'),
 });

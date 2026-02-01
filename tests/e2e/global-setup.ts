@@ -24,7 +24,8 @@ async function globalSetup(config: FullConfig) {
         timeout: 10000
       });
       
-      if (response && response.ok()) {
+      // LuCI might return 200 or 403 initially, both are OK as long as we get the login form
+      if (response && (response.ok() || response.status() === 403)) {
         // Check if we can actually see login form elements
         const hasLoginForm = await page.locator('#luci_password').isVisible({ timeout: 5000 }).catch(() => false);
         
@@ -34,7 +35,7 @@ async function globalSetup(config: FullConfig) {
           return;
         }
         
-        console.log(`  ⚠️  Page loaded but login form not found yet...`);
+        console.log(`  ⚠️  HTTP ${response.status()} but login form not found yet...`);
       } else {
         console.log(`  ⚠️  HTTP ${response?.status() || 'unknown'} - retrying...`);
       }
