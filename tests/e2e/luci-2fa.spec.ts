@@ -1,7 +1,36 @@
 import { test, expect, Page } from '@playwright/test';
 
 /**
+ * Helper function to verify we are logged in (not on login page)
+ */
+async function verifyLoggedIn(page: Page): Promise<boolean> {
+  const url = page.url();
+  // Check if we're on an admin page
+  if (!url.includes('admin')) {
+    return false;
+  }
+  
+  // Check that login form is NOT visible (we're not on login page)
+  const loginForm = page.locator('#luci_password');
+  const isLoginFormVisible = await loginForm.isVisible().catch(() => false);
+  
+  if (isLoginFormVisible) {
+    return false;
+  }
+  
+  // Additional check: look for admin page elements that indicate successful login
+  const pageContent = await page.content();
+  const hasAdminIndicators = pageContent.includes('Logout') || 
+                             pageContent.includes('logout') ||
+                             pageContent.includes('Status') ||
+                             pageContent.includes('System');
+  
+  return hasAdminIndicators;
+}
+
+/**
  * Helper function to login to LuCI with retries
+ * Throws an error if login fails after all retries
  */
 async function login(page: Page, password: string = 'password', maxRetries: number = 3) {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -23,27 +52,38 @@ async function login(page: Page, password: string = 'password', maxRetries: numb
       // Wait for navigation - either redirect to admin or page reload
       try {
         await page.waitForURL(/admin/, { timeout: 15000 });
-        return; // Success
       } catch {
-        // If redirect doesn't happen, we might still be on login page after successful login
-        // Wait a bit and check the URL
+        // If redirect doesn't happen, wait a bit
         await page.waitForTimeout(2000);
-        const url = page.url();
-        if (!url.includes('admin')) {
-          // Try navigating directly to admin page  
-          await page.goto('/cgi-bin/luci/admin/status/overview', { waitUntil: 'domcontentloaded', timeout: 15000 });
-          await page.waitForTimeout(2000);
-        }
+      }
+      
+      // Navigate to admin page to verify login
+      const currentUrl = page.url();
+      if (!currentUrl.includes('admin')) {
+        await page.goto('/cgi-bin/luci/admin/status/overview', { waitUntil: 'domcontentloaded', timeout: 15000 });
+      }
+      await page.waitForTimeout(2000);
+      
+      // Verify login was successful
+      const isLoggedIn = await verifyLoggedIn(page);
+      if (isLoggedIn) {
         return; // Success
       }
+      
+      // Login failed, prepare for retry
+      throw new Error('Login verification failed - still on login page or admin indicators not found');
     } catch (error) {
       if (attempt === maxRetries - 1) {
-        throw error; // Re-throw on last attempt
+        // Take a screenshot to debug failed login
+        await page.screenshot({ path: `screenshots/login-failed-attempt-${attempt + 1}.png`, fullPage: true }).catch(() => {});
+        throw new Error(`Login failed after ${maxRetries} attempts: ${error}`);
       }
       console.log(`Login attempt ${attempt + 1} failed, retrying...`);
       await page.waitForTimeout(2000);
     }
   }
+  
+  throw new Error('Login failed: exhausted all retry attempts');
 }
 
 /**
@@ -109,6 +149,12 @@ test.describe('LuCI Login Page', () => {
 test.describe('2FA Settings Page', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
+    
+    // Double-check we're logged in before proceeding
+    const isLoggedIn = await verifyLoggedIn(page);
+    if (!isLoggedIn) {
+      throw new Error('beforeEach: Login verification failed - test cannot proceed');
+    }
   });
 
   test('should navigate to 2FA settings page', async ({ page }) => {
@@ -127,14 +173,26 @@ test.describe('2FA Settings Page', () => {
     // Verify page contains 2FA content
     const content = await page.content();
     expect(content).toContain('2-Factor');
+    
+    // Additional assertion: verify we have the 2FA settings form
+    const pageUrl = page.url();
+    expect(pageUrl).toContain('2fa');
   });
 
   test('should display Enable 2FA checkbox', async ({ page }) => {
     await page.goto('/cgi-bin/luci/admin/system/2fa');
     
+    // Verify we're on the correct page first
+    const pageUrl = page.url();
+    expect(pageUrl).toContain('2fa');
+    
     // Wait for the form to load
     await page.waitForSelector('.cbi-map', { timeout: 60000 });
     await page.waitForTimeout(2000);
+    
+    // Verify we're not on login page
+    const loginForm = page.locator('#luci_password');
+    await expect(loginForm).not.toBeVisible({ timeout: 5000 });
     
     // Check for Enable 2FA checkbox - use more flexible selector
     const enableCheckbox = page.locator('input[type="checkbox"]').first();
@@ -147,9 +205,16 @@ test.describe('2FA Settings Page', () => {
   test('should display OTP type selector', async ({ page }) => {
     await page.goto('/cgi-bin/luci/admin/system/2fa');
     
+    // Verify we're on the correct page first
+    expect(page.url()).toContain('2fa');
+    
     // Wait for the form to load
     await page.waitForSelector('.cbi-map', { timeout: 60000 });
     await page.waitForTimeout(2000);
+    
+    // Verify we're not on login page
+    const loginForm = page.locator('#luci_password');
+    await expect(loginForm).not.toBeVisible({ timeout: 5000 });
     
     // Check for OTP type dropdown - be more flexible
     const typeSelector = page.locator('select').first();
@@ -162,9 +227,16 @@ test.describe('2FA Settings Page', () => {
   test('should have Generate Key button', async ({ page }) => {
     await page.goto('/cgi-bin/luci/admin/system/2fa');
     
+    // Verify we're on the correct page first
+    expect(page.url()).toContain('2fa');
+    
     // Wait for the form to load
     await page.waitForSelector('.cbi-map', { timeout: 60000 });
     await page.waitForTimeout(2000);
+    
+    // Verify we're not on login page
+    const loginForm = page.locator('#luci_password');
+    await expect(loginForm).not.toBeVisible({ timeout: 5000 });
     
     // Look for Generate Key button with more flexible matching
     const generateButton = page.locator('button:has-text("Generate")');
@@ -186,9 +258,16 @@ test.describe('2FA Settings Page', () => {
   test('should display QR code when key is set', async ({ page }) => {
     await page.goto('/cgi-bin/luci/admin/system/2fa');
     
+    // Verify we're on the correct page first
+    expect(page.url()).toContain('2fa');
+    
     // Wait for the form to load
     await page.waitForSelector('.cbi-map', { timeout: 60000 });
     await page.waitForTimeout(2000);
+    
+    // Verify we're not on login page
+    const loginForm = page.locator('#luci_password');
+    await expect(loginForm).not.toBeVisible({ timeout: 5000 });
     
     // Generate a key first
     const generateButton = page.locator('button:has-text("Generate")');
@@ -208,9 +287,20 @@ test.describe('2FA Settings Page', () => {
   test('should show TOTP-specific options when TOTP is selected', async ({ page }) => {
     await page.goto('/cgi-bin/luci/admin/system/2fa');
     
+    // Verify we're on the correct page first
+    expect(page.url()).toContain('2fa');
+    
     // Wait for the form to load
     await page.waitForSelector('.cbi-map', { timeout: 60000 });
     await page.waitForTimeout(2000);
+    
+    // Verify we're not on login page
+    const loginForm = page.locator('#luci_password');
+    await expect(loginForm).not.toBeVisible({ timeout: 5000 });
+    
+    // Verify 2FA form content is present
+    const pageContent = await page.content();
+    expect(pageContent).toContain('2-Factor');
     
     // Take screenshot
     await takeScreenshot(page, '10-2fa-totp-options');
@@ -219,16 +309,26 @@ test.describe('2FA Settings Page', () => {
   test('should show HOTP-specific options when HOTP is selected', async ({ page }) => {
     await page.goto('/cgi-bin/luci/admin/system/2fa');
     
+    // Verify we're on the correct page first
+    expect(page.url()).toContain('2fa');
+    
     // Wait for the form to load
     await page.waitForSelector('.cbi-map', { timeout: 60000 });
     await page.waitForTimeout(2000);
     
+    // Verify we're not on login page
+    const loginForm = page.locator('#luci_password');
+    await expect(loginForm).not.toBeVisible({ timeout: 5000 });
+    
     // Select HOTP if type selector exists
     const typeSelector = page.locator('select').first();
-    if (await typeSelector.isVisible()) {
-      await typeSelector.selectOption('hotp');
-      await page.waitForTimeout(1000);
-    }
+    await expect(typeSelector).toBeVisible({ timeout: 10000 });
+    await typeSelector.selectOption('hotp');
+    await page.waitForTimeout(1000);
+    
+    // Verify 2FA form content is present
+    const pageContent = await page.content();
+    expect(pageContent).toContain('2-Factor');
     
     // Take screenshot
     await takeScreenshot(page, '11-2fa-hotp-options');
@@ -237,19 +337,25 @@ test.describe('2FA Settings Page', () => {
   test('should save settings', async ({ page }) => {
     await page.goto('/cgi-bin/luci/admin/system/2fa');
     
+    // Verify we're on the correct page first
+    expect(page.url()).toContain('2fa');
+    
     // Wait for the form to load
     await page.waitForSelector('.cbi-map', { timeout: 60000 });
     await page.waitForTimeout(2000);
+    
+    // Verify we're not on login page
+    const loginForm = page.locator('#luci_password');
+    await expect(loginForm).not.toBeVisible({ timeout: 5000 });
     
     // Take screenshot before save
     await takeScreenshot(page, '12-2fa-before-save');
     
     // Click Save & Apply if visible
     const saveButton = page.locator('button:has-text("Save")');
-    if (await saveButton.isVisible()) {
-      await saveButton.click();
-      await page.waitForTimeout(5000);
-    }
+    await expect(saveButton).toBeVisible({ timeout: 10000 });
+    await saveButton.click();
+    await page.waitForTimeout(5000);
     
     // Take screenshot after save
     await takeScreenshot(page, '13-2fa-after-save');
@@ -359,6 +465,12 @@ test.describe('Login with 2FA', () => {
 test.describe('System Menu Navigation', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
+    
+    // Double-check we're logged in before proceeding
+    const isLoggedIn = await verifyLoggedIn(page);
+    if (!isLoggedIn) {
+      throw new Error('beforeEach: Login verification failed - test cannot proceed');
+    }
   });
 
   test('should show 2FA in system menu', async ({ page }) => {
@@ -368,10 +480,16 @@ test.describe('System Menu Navigation', () => {
     // Wait for page content to load
     await page.waitForTimeout(3000);
     
+    // Verify we're not on login page
+    const loginForm = page.locator('#luci_password');
+    await expect(loginForm).not.toBeVisible({ timeout: 5000 });
+    
     // Take screenshot of system menu
     await takeScreenshot(page, '19-system-menu');
     
-    // Check if page loaded correctly
+    // Check if page loaded correctly - should be on admin page
+    expect(page.url()).toContain('admin');
+    
     const pageContent = await page.content();
     expect(pageContent).toContain('system');
   });
@@ -380,17 +498,35 @@ test.describe('System Menu Navigation', () => {
     // System Overview
     await page.goto('/cgi-bin/luci/admin/status/overview');
     await page.waitForTimeout(3000);
+    
+    // Verify we're not on login page
+    let loginForm = page.locator('#luci_password');
+    await expect(loginForm).not.toBeVisible({ timeout: 5000 });
+    expect(page.url()).toContain('admin');
+    
     await takeScreenshot(page, '20-status-overview');
     
     // Password page
     await page.goto('/cgi-bin/luci/admin/system/admin/password');
     await page.waitForTimeout(3000);
+    
+    // Verify we're not on login page
+    loginForm = page.locator('#luci_password');
+    await expect(loginForm).not.toBeVisible({ timeout: 5000 });
+    expect(page.url()).toContain('admin');
+    
     await takeScreenshot(page, '21-system-password');
     
     // 2FA page
     await page.goto('/cgi-bin/luci/admin/system/2fa');
     await page.waitForSelector('.cbi-map', { timeout: 60000 });
     await page.waitForTimeout(2000);
+    
+    // Verify we're not on login page
+    loginForm = page.locator('#luci_password');
+    await expect(loginForm).not.toBeVisible({ timeout: 5000 });
+    expect(page.url()).toContain('2fa');
+    
     await takeScreenshot(page, '22-system-2fa-final');
   });
 });
