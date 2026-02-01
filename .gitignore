@@ -21,3 +21,12 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Test artifacts
+test-results/
+playwright-report/
+screenshots/
+.playwright/
+
+# Package lock
+package-lock.json

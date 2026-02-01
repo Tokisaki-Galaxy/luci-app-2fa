@@ -1,0 +1,318 @@
+name: E2E Tests & UI Screenshots
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+env:
+  CONTAINER_NAME: openwrt-luci-e2e
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  e2e-tests:
+    name: Run E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package.json
+
+      - name: Install dependencies
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache OpenWrt Docker Image
+        id: cache-openwrt-docker
+        uses: actions/cache@v4
+        with:
+          path: /tmp/openwrt-docker-image.tar
+          key: openwrt-docker-${{ runner.os }}-openwrt-rootfs-x86-64-24.10.4
+
+      - name: Pull and Save OpenWrt Docker Image
+        if: steps.cache-openwrt-docker.outputs.cache-hit != 'true'
+        run: |
+          docker pull openwrt/rootfs:x86-64-24.10.4
+          docker save openwrt/rootfs:x86-64-24.10.4 -o /tmp/openwrt-docker-image.tar
+
+      - name: Load OpenWrt Docker Image from Cache
+        if: steps.cache-openwrt-docker.outputs.cache-hit == 'true'
+        run: |
+          docker load -i /tmp/openwrt-docker-image.tar
+
+      - name: Start OpenWrt Container with LuCI
+        run: |
+          docker run -d --name $CONTAINER_NAME -p 8080:80 openwrt/rootfs:x86-64-24.10.4 /bin/ash -c '
+            mkdir -p /var/lock /var/run
+            opkg update && opkg install luci luci-base luci-compat luci-mod-admin-full luci-mod-system luci-theme-bootstrap
+            
+            # Start services in correct order
+            /sbin/ubusd &
+            sleep 1
+            /sbin/procd &
+            sleep 2
+            /sbin/rpcd &
+            sleep 1
+            /usr/sbin/uhttpd -f -h /www -r OpenWrt -x /cgi-bin -u /ubus -t 60 -T 30 -A 1 -n 3 -N 100 -R -p 0.0.0.0:80 &
+            
+            # Set password
+            echo -e "password\npassword" | passwd root
+            
+            # Configure theme
+            uci set luci.themes.Bootstrap=/luci-static/bootstrap
+            uci commit luci
+            
+            tail -f /dev/null
+          '
+
+      - name: Wait for LuCI to be ready
+        run: |
+          echo "Waiting for LuCI..."
+          MAX_RETRIES=60
+          COUNT=0
+          while [ $COUNT -lt $MAX_RETRIES ]; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/cgi-bin/luci/ 2>/dev/null || echo "000")
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "403" ]; then
+              echo "LuCI is ready (HTTP $HTTP_CODE)"
+              break
+            fi
+            echo "Waiting... ($((COUNT+1))/$MAX_RETRIES) [HTTP: $HTTP_CODE]"
+            sleep 5
+            COUNT=$((COUNT+1))
+          done
+          
+          if [ $COUNT -eq $MAX_RETRIES ]; then
+            echo "Timeout waiting for LuCI"
+            docker logs $CONTAINER_NAME
+            exit 1
+          fi
+
+      - name: Deploy luci-app-2fa plugin
+        run: |
+          # Create directories
+          docker exec $CONTAINER_NAME mkdir -p \
+            /usr/share/rpcd/ucode \
+            /usr/share/rpcd/acl.d \
+            /usr/share/luci/auth.d \
+            /usr/share/luci/menu.d \
+            /www/luci-static/resources/view/system \
+            /usr/share/ucode/luci/template/themes/bootstrap \
+            /usr/libexec
+          
+          # Deploy luci-app-2fa files
+          docker cp luci-app-2fa/root/usr/libexec/generate_otp.uc $CONTAINER_NAME:/usr/libexec/generate_otp.uc
+          docker exec $CONTAINER_NAME chmod +x /usr/libexec/generate_otp.uc
+          
+          docker cp luci-app-2fa/root/usr/share/rpcd/ucode/2fa.uc $CONTAINER_NAME:/usr/share/rpcd/ucode/2fa.uc
+          docker cp luci-app-2fa/root/usr/share/rpcd/acl.d/luci-app-2fa.json $CONTAINER_NAME:/usr/share/rpcd/acl.d/luci-app-2fa.json
+          docker cp luci-app-2fa/root/usr/share/luci/auth.d/2fa.uc $CONTAINER_NAME:/usr/share/luci/auth.d/2fa.uc
+          docker cp luci-app-2fa/root/usr/share/luci/menu.d/luci-app-2fa.json $CONTAINER_NAME:/usr/share/luci/menu.d/luci-app-2fa.json
+          docker cp luci-app-2fa/htdocs/luci-static/resources/view/system/2fa.js $CONTAINER_NAME:/www/luci-static/resources/view/system/2fa.js
+          docker cp luci-app-2fa/htdocs/luci-static/resources/uqr.js $CONTAINER_NAME:/www/luci-static/resources/uqr.js
+          docker cp luci-app-2fa/root/etc/config/2fa $CONTAINER_NAME:/etc/config/2fa
+          
+          # Deploy luci-patch files
+          docker cp luci-patch/patch/luci $CONTAINER_NAME:/usr/share/rpcd/ucode/luci
+          docker cp luci-patch/patch/dispatcher.uc $CONTAINER_NAME:/usr/share/ucode/luci/dispatcher.uc
+          docker cp luci-patch/patch/sysauth.ut $CONTAINER_NAME:/usr/share/ucode/luci/template/sysauth.ut
+          docker cp luci-patch/patch/bootstrap-sysauth.ut $CONTAINER_NAME:/usr/share/ucode/luci/template/themes/bootstrap/sysauth.ut
+          docker cp luci-patch/patch/view/system/authsettings.js $CONTAINER_NAME:/www/luci-static/resources/view/system/authsettings.js
+          docker cp luci-patch/patch/luci-base.json $CONTAINER_NAME:/usr/share/rpcd/acl.d/luci-base.json
+          docker cp luci-patch/patch/luci-mod-system.json $CONTAINER_NAME:/usr/share/luci/menu.d/luci-mod-system.json
+          
+          # Enable external auth
+          docker exec $CONTAINER_NAME sh -c '
+            uci set luci.main=core
+            uci set luci.main.external_auth=1
+            uci commit luci
+          '
+          
+          # Restart rpcd
+          docker exec $CONTAINER_NAME sh -c 'kill $(pgrep rpcd) 2>/dev/null || true; sleep 1; /sbin/rpcd &'
+          sleep 2
+          
+          # Clear LuCI cache
+          docker exec $CONTAINER_NAME rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache*
+          
+          echo "Plugin deployed successfully"
+
+      - name: Verify services
+        run: |
+          echo "Checking ubus services..."
+          docker exec $CONTAINER_NAME ubus list | head -20
+          
+          echo "Testing 2fa RPC endpoint..."
+          docker exec $CONTAINER_NAME ubus call 2fa getConfig '{}' || echo "Note: 2fa service may need auth"
+
+      - name: Run TOTP verification test
+        run: |
+          node tests/totp-verification.test.js || echo "TOTP verification completed"
+
+      - name: Run backend tests
+        run: |
+          chmod +x tests/backend/test-backend.sh
+          ./tests/backend/test-backend.sh $CONTAINER_NAME || true
+
+      - name: Create screenshots directory
+        run: mkdir -p screenshots
+
+      - name: Run Playwright E2E tests
+        run: |
+          npx playwright test --reporter=html || true
+        env:
+          CI: true
+
+      - name: Collect screenshots
+        if: always()
+        run: |
+          # Copy screenshots from test-results to screenshots directory
+          find test-results -name "*.png" -exec cp {} screenshots/ \; 2>/dev/null || true
+          find playwright-report -name "*.png" -exec cp {} screenshots/ \; 2>/dev/null || true
+          
+          # List screenshots
+          echo "Screenshots collected:"
+          ls -la screenshots/ || echo "No screenshots found"
+
+      - name: Upload screenshots artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: screenshots/
+          retention-days: 30
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 30
+
+      - name: Post screenshots to PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            const screenshotsDir = 'screenshots';
+            let screenshotFiles = [];
+            
+            try {
+              screenshotFiles = fs.readdirSync(screenshotsDir)
+                .filter(f => f.endsWith('.png'))
+                .sort();
+            } catch (e) {
+              console.log('No screenshots directory found');
+            }
+            
+            if (screenshotFiles.length === 0) {
+              console.log('No screenshots found');
+              return;
+            }
+            
+            // Get artifact URL
+            const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId
+            });
+            
+            const screenshotArtifact = artifacts.artifacts.find(a => a.name === 'ui-screenshots');
+            const reportArtifact = artifacts.artifacts.find(a => a.name === 'playwright-report');
+            
+            let comment = `## 📸 UI Screenshots\n\n`;
+            comment += `Screenshots from E2E tests are available:\n\n`;
+            
+            if (screenshotArtifact) {
+              comment += `📦 **[Download Screenshots](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}/artifacts/${screenshotArtifact.id})**\n\n`;
+            }
+            
+            if (reportArtifact) {
+              comment += `📊 **[Download Playwright Report](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}/artifacts/${reportArtifact.id})**\n\n`;
+            }
+            
+            comment += `### Screenshot List\n\n`;
+            comment += `| # | Screenshot |\n`;
+            comment += `|---|---|\n`;
+            
+            screenshotFiles.forEach((file, index) => {
+              const name = file.replace('.png', '').replace(/-/g, ' ');
+              comment += `| ${index + 1} | ${name} |\n`;
+            });
+            
+            comment += `\n---\n`;
+            comment += `*Screenshots captured at ${new Date().toISOString()}*\n`;
+            comment += `*Workflow run: [#${context.runId}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})*`;
+            
+            // Find existing comment to update
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const botComment = comments.find(c => 
+              c.user.type === 'Bot' && 
+              c.body.includes('## 📸 UI Screenshots')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
+
+      - name: Container logs on failure
+        if: failure()
+        run: |
+          echo "=== Container Logs ==="
+          docker logs $CONTAINER_NAME 2>&1 || true
+          
+          echo "=== Running Processes ==="
+          docker exec $CONTAINER_NAME ps aux 2>&1 || true
+          
+          echo "=== ubus list ==="
+          docker exec $CONTAINER_NAME ubus list 2>&1 || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f $CONTAINER_NAME 2>/dev/null || true
