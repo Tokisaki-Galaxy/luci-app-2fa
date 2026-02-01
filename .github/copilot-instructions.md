@@ -18,7 +18,7 @@
 **一键启动脚本 (安装依赖+配置+启动):**
 ```bash
 docker run -d --name openwrt-luci -p 8080:80 openwrt/rootfs:x86-64-24.10.4 /bin/ash -c '
-mkdir -p /var/lock /var/run && opkg update && opkg install luci luci-base luci-compat
+mkdir -p /var/lock /var/run && opkg update && opkg install luci luci-base luci-compat ucode-mod-log
 /sbin/ubusd & sleep 1 && /sbin/procd & sleep 2 && /sbin/rpcd & sleep 1
 /usr/sbin/uhttpd -f -h /www -r OpenWrt -x /cgi-bin -u /ubus -t 60 -T 30 -A 1 -n 3 -N 100 -R -p 0.0.0.0:80 &
 echo -e "password\npassword" | passwd root

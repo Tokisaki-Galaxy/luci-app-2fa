@@ -60,8 +60,6 @@ This patch adds a **generic, non-hardcoded authentication plugin mechanism** to 
 
 ## File Mapping
 
-**When OpenWRT version <25.x.x (such as `24.10.4`),using the `dispatcher.lowopenwrtversion.uc` instead of `dispatcher.uc`.**
-
 ### Origin Files (from upstream LuCI)
 
 | Origin File | LuCI Source Path |

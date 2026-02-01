@@ -89,11 +89,11 @@ jobs:
           # Test 1: Basic container execution
           echo "Test 1: Running basic command in OpenWrt container..."
           docker run --rm openwrt/rootfs:x86-64-24.10.4 /bin/ash -c "echo 'Hello from OpenWrt container!'"
-          
+
           # Test 2: Check OpenWrt version
           echo "Test 2: Checking OpenWrt version..."
           docker run --rm openwrt/rootfs:x86-64-24.10.4 /bin/ash -c "cat /etc/openwrt_release"
-          
+
           # Test 3: Test volume mounting with content verification
           echo "Test 3: Testing volume mount..."
           TEST_CONTENT="test_content_$(date +%s)"
@@ -109,7 +109,7 @@ jobs:
             echo "Got: $RESULT"
             exit 1
           fi
-          
+
           # Test 4: Test opkg package manager (with initialization and installation)
           echo "Test 4: Testing opkg package manager..."
           # 1. Create /var/lock to prevent "Could not create lock file" errors
@@ -117,16 +117,16 @@ jobs:
           # 3. Install a small package ('file') to verify installation works
           # All running in the same container shell to persist state
           OPKG_TEST_CMD="if [ ! -d ./scripts ] && [ -f ./setup.sh ]; then sh ./setup.sh; fi && mkdir -p /var/lock/ && opkg update && opkg install file && which file && echo 'Package installation verified!'"
-          
+
           if docker run --rm openwrt/rootfs:x86-64-24.10.4 /bin/ash -c "$OPKG_TEST_CMD"; then
             echo "opkg update and install succeeded"
             # Optional: List installed packages to show 'file' is there
-            # docker run --rm openwrt/rootfs:x86-64-24.10.4 /bin/ash -c "mkdir -p /var/lock/ && opkg list-installed | grep file" 
+            # docker run --rm openwrt/rootfs:x86-64-24.10.4 /bin/ash -c "mkdir -p /var/lock/ && opkg list-installed | grep file"
           else
             echo "Note: opkg test failed"
-            exit 1 
+            exit 1
           fi
-          
+
           # Test 5: Test network connectivity from container (via HTTP/TCP)
           echo "Test 5: Testing network connectivity via HTTP..."
           if docker run --rm openwrt/rootfs:x86-64-24.10.4 /bin/ash -c "wget -q --spider http://www.google.com"; then
@@ -134,13 +134,13 @@ jobs:
           else
             echo "Network connectivity: Restricted or no internet access"
           fi
-          
+
           # Test 6: Test complete LuCI environment startup (critical for plugin debugging)
           echo "Test 6: Testing complete LuCI environment startup..."
           echo "This validates the correct service startup order: ubusd → procd → rpcd → uhttpd"
-          
+
           CONTAINER_NAME="openwrt-luci-test-$$"
-          
+
           # Start container with all services in correct order
           docker run -d --name "$CONTAINER_NAME" -p 8080:80 openwrt/rootfs:x86-64-24.10.4 /bin/ash -c '
             mkdir -p /var/lock /var/run
@@ -159,7 +159,7 @@ jobs:
             uci set luci.themes.Bootstrap=/luci-static/bootstrap && uci commit luci
             tail -f /dev/null
           '
-          
+
           # Wait for container to be ready
           echo "Waiting for LuCI to be ready..."
           MAX_RETRIES=10
@@ -177,13 +177,13 @@ jobs:
             sleep 5
             COUNT=$((COUNT+1))
           done
-          
+
           if [ $SUCCESS -eq 0 ]; then
              echo "Timeout waiting for LuCI to be ready"
              docker logs "$CONTAINER_NAME"
              exit 1
           fi
-          
+
           # Verify critical services are running
           echo "Verifying services..."
           docker exec "$CONTAINER_NAME" ps | grep -E "ubusd|procd|rpcd|uhttpd" || {
@@ -192,7 +192,7 @@ jobs:
             docker rm -f "$CONTAINER_NAME"
             exit 1
           }
-          
+
           # Verify ubus services (especially 'system' which is provided by procd)
           echo "Verifying ubus services..."
           if docker exec "$CONTAINER_NAME" ubus list | grep -q "system"; then
@@ -203,7 +203,7 @@ jobs:
             docker rm -f "$CONTAINER_NAME"
             exit 1
           fi
-          
+
           # Verify LuCI web interface responds
           echo "Verifying LuCI web interface..."
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/cgi-bin/luci/ || echo "000")
@@ -215,11 +215,11 @@ jobs:
             docker rm -f "$CONTAINER_NAME"
             exit 1
           fi
-          
+
           # Cleanup
           docker rm -f "$CONTAINER_NAME"
           echo "LuCI environment test completed successfully!"
-          
+
           echo "=== All Docker communication tests completed successfully ==="
 
       - name: Install dependencies
