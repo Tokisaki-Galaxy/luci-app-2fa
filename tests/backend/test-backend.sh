@@ -21,12 +21,12 @@ fail_count=0
 
 log_pass() {
     echo -e "${GREEN}✓ PASS${NC}: $1"
-    ((pass_count++))
+    ((pass_count++)) || true
 }
 
 log_fail() {
     echo -e "${RED}✗ FAIL${NC}: $1"
-    ((fail_count++))
+    ((fail_count++)) || true
 }
 
 log_info() {
