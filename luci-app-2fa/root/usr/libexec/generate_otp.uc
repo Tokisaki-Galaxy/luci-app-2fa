@@ -320,7 +320,15 @@ for (let i = 1; i < length(ARGV); i++) {
 	if (arg == '--no-increment') {
 		no_increment = true;
 	} else if (substr(arg, 0, 7) == '--time=') {
-		custom_time = int(substr(arg, 7));
+		let time_str = substr(arg, 7);
+		// Validate that time is numeric only (security: prevent injection)
+		if (match(time_str, /^[0-9]+$/)) {
+			custom_time = int(time_str);
+			// Validate reasonable time range (after year 2000, before year 2100)
+			if (custom_time < 946684800 || custom_time > 4102444800) {
+				custom_time = null;  // Invalid time, use default
+			}
+		}
 	}
 }
 

@@ -79,6 +79,7 @@ function verify_otp(username, otp) {
 
 	if (otp_type == 'hotp') {
 		// HOTP verification: use --no-increment to not consume the counter during verification
+		// SECURITY: safe_username is validated by sanitize_username() to match [a-zA-Z0-9_.+-]+
 		let fd = fs.popen('/usr/libexec/generate_otp.uc ' + safe_username + ' --no-increment', 'r');
 		if (!fd)
 			return false;
@@ -101,11 +102,14 @@ function verify_otp(username, otp) {
 	} else {
 		// TOTP verification: check current window and adjacent windows (±1) for time drift tolerance
 		let step = int(ctx.get('2fa', safe_username, 'step') || '30');
+		if (step <= 0) step = 30;  // Ensure valid step value
 		let current_time = time();
 		
 		// Check window offsets: current (0), previous (-1), next (+1)
+		// SECURITY: check_time is derived from time() (integer) and integer arithmetic only
+		// safe_username is validated by sanitize_username() to match [a-zA-Z0-9_.+-]+
 		for (let offset in [0, -1, 1]) {
-			let check_time = current_time + (offset * step);
+			let check_time = int(current_time + (offset * step));  // Explicit int conversion
 			let fd = fs.popen('/usr/libexec/generate_otp.uc ' + safe_username + ' --no-increment --time=' + check_time, 'r');
 			if (!fd)
 				continue;
