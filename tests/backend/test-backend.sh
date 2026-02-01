@@ -298,6 +298,22 @@ test_input_validation() {
 test_totp_time_window() {
     log_info "Test 9: TOTP Time Consistency"
     
+    # Wait until we're safely away from a 30-second boundary
+    # This ensures both OTP generations happen within the same time window
+    local seconds_in_window=$(($(date +%s) % 30))
+    if [ $seconds_in_window -gt 25 ] || [ $seconds_in_window -lt 3 ]; then
+        # Too close to boundary, wait until we're at second 5 of current/next window
+        local wait_time
+        if [ $seconds_in_window -lt 3 ]; then
+            # Near start of window, wait until second 5
+            wait_time=$((5 - seconds_in_window))
+        else
+            # Near end of window (>25), wait until second 5 of next window
+            wait_time=$((35 - seconds_in_window))
+        fi
+        sleep $wait_time
+    fi
+    
     # Generate two codes close together - they should be the same within 30 seconds
     local otp1=$(docker exec "$CONTAINER_NAME" /usr/libexec/generate_otp.uc root 2>&1)
     sleep 1
