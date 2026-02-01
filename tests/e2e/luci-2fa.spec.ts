@@ -20,10 +20,10 @@ async function verifyLoggedIn(page: Page): Promise<boolean> {
   
   // Additional check: look for admin page elements that indicate successful login
   const pageContent = await page.content();
-  const hasAdminIndicators = pageContent.includes('Logout') || 
-                             pageContent.includes('logout') ||
-                             pageContent.includes('Status') ||
-                             pageContent.includes('System');
+  const lowerContent = pageContent.toLowerCase();
+  const hasAdminIndicators = lowerContent.includes('logout') ||
+                             lowerContent.includes('status') ||
+                             lowerContent.includes('system');
   
   return hasAdminIndicators;
 }
@@ -500,8 +500,8 @@ test.describe('System Menu Navigation', () => {
     await page.waitForTimeout(3000);
     
     // Verify we're not on login page
-    let loginForm = page.locator('#luci_password');
-    await expect(loginForm).not.toBeVisible({ timeout: 5000 });
+    const overviewLoginForm = page.locator('#luci_password');
+    await expect(overviewLoginForm).not.toBeVisible({ timeout: 5000 });
     expect(page.url()).toContain('admin');
     
     await takeScreenshot(page, '20-status-overview');
@@ -511,8 +511,8 @@ test.describe('System Menu Navigation', () => {
     await page.waitForTimeout(3000);
     
     // Verify we're not on login page
-    loginForm = page.locator('#luci_password');
-    await expect(loginForm).not.toBeVisible({ timeout: 5000 });
+    const passwordLoginForm = page.locator('#luci_password');
+    await expect(passwordLoginForm).not.toBeVisible({ timeout: 5000 });
     expect(page.url()).toContain('admin');
     
     await takeScreenshot(page, '21-system-password');
@@ -523,8 +523,8 @@ test.describe('System Menu Navigation', () => {
     await page.waitForTimeout(2000);
     
     // Verify we're not on login page
-    loginForm = page.locator('#luci_password');
-    await expect(loginForm).not.toBeVisible({ timeout: 5000 });
+    const twofaLoginForm = page.locator('#luci_password');
+    await expect(twofaLoginForm).not.toBeVisible({ timeout: 5000 });
     expect(page.url()).toContain('2fa');
     
     await takeScreenshot(page, '22-system-2fa-final');
