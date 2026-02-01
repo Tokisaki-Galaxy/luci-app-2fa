@@ -3,15 +3,15 @@
 		"description": "Grant access to 2-Factor Authentication configuration",
 		"read": {
 			"ubus": {
-				"2fa": [ "getConfig", "verifyOTP", "isEnabled", "listAuthPlugins" ]
+				"2fa": [ "getConfig", "verifyOTP", "isEnabled" ]
 			},
-			"uci": [ "2fa", "luci" ]
+			"uci": [ "2fa" ]
 		},
 		"write": {
 			"ubus": {
 				"2fa": [ "setConfig", "generateKey" ]
 			},
-			"uci": [ "2fa", "luci" ]
+			"uci": [ "2fa" ]
 		}
 	},
 	"unauthenticated": {
