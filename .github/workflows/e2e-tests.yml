@@ -163,19 +163,19 @@ jobs:
 
       - name: Run TOTP verification test
         run: |
-          node tests/totp-verification.test.js || echo "TOTP verification completed"
+          node tests/totp-verification.test.js
 
       - name: Run backend tests
         run: |
           chmod +x tests/backend/test-backend.sh
-          ./tests/backend/test-backend.sh $CONTAINER_NAME || true
+          ./tests/backend/test-backend.sh $CONTAINER_NAME
 
       - name: Create screenshots directory
         run: mkdir -p screenshots
 
       - name: Run Playwright E2E tests
         run: |
-          npx playwright test --reporter=html || true
+          npx playwright test --reporter=html
         env:
           CI: true
 
