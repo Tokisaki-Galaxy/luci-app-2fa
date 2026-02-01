@@ -158,8 +158,8 @@ deploy_plugin() {
         "$CONTAINER_NAME:/usr/share/ucode/luci/template/themes/bootstrap/sysauth.ut"
     
     # Deploy authsettings view
-    docker cp "$REPO_ROOT/luci-patch/patch/view/system/authsettings.js" \
-        "$CONTAINER_NAME:/www/luci-static/resources/view/system/authsettings.js"
+    docker cp "$REPO_ROOT/luci-patch/patch/view/system/exauth.js" \
+        "$CONTAINER_NAME:/www/luci-static/resources/view/system/exauth.js"
     
     # Deploy ACL patches
     docker cp "$REPO_ROOT/luci-patch/patch/luci-base.json" \

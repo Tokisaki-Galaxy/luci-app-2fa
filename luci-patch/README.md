@@ -50,7 +50,7 @@ This patch adds a **generic, non-hardcoded authentication plugin mechanism** to 
    - Support multiple auth plugins simultaneously
 
 4. **Authentication Settings UI**: A new "Authentication" menu item is added under System > Administration:
-   - View at `/www/luci-static/resources/view/system/authsettings.js`
+   - View at `/www/luci-static/resources/view/system/exauth.js`
    - Allows enabling/disabling external authentication globally
    - Allows enabling/disabling individual authentication plugins
 
@@ -83,7 +83,7 @@ This patch adds a **generic, non-hardcoded authentication plugin mechanism** to 
 | `patch/luci-mod-system.json` | `/usr/share/luci/menu.d/luci-mod-system.json` |
 | `patch/luci` | `/usr/share/rpcd/ucode/luci` |
 | `patch/luci-base.json` | `/usr/share/rpcd/acl.d/luci-base.json` |
-| `patch/view/system/authsettings.js` | `/www/luci-static/resources/view/system/authsettings.js` |
+| `patch/view/system/exauth.js` | `/www/luci-static/resources/view/system/exauth.js` |
 
 ## How to Apply
 
@@ -107,7 +107,7 @@ cp patch/luci /usr/share/rpcd/ucode/luci
 cp patch/luci-base.json /usr/share/rpcd/acl.d/luci-base.json
 
 # Authentication settings view
-cp patch/view/system/authsettings.js /www/luci-static/resources/view/system/authsettings.js
+cp patch/view/system/exauth.js /www/luci-static/resources/view/system/exauth.js
 
 # Clear cache and restart services
 rm -f /tmp/luci-indexcache*

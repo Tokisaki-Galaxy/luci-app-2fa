@@ -133,7 +133,7 @@ jobs:
           docker cp luci-patch/patch/dispatcher.uc $CONTAINER_NAME:/usr/share/ucode/luci/dispatcher.uc
           docker cp luci-patch/patch/sysauth.ut $CONTAINER_NAME:/usr/share/ucode/luci/template/sysauth.ut
           docker cp luci-patch/patch/bootstrap-sysauth.ut $CONTAINER_NAME:/usr/share/ucode/luci/template/themes/bootstrap/sysauth.ut
-          docker cp luci-patch/patch/view/system/authsettings.js $CONTAINER_NAME:/www/luci-static/resources/view/system/authsettings.js
+          docker cp luci-patch/patch/view/system/exauth.js $CONTAINER_NAME:/www/luci-static/resources/view/system/exauth.js
           docker cp luci-patch/patch/luci-base.json $CONTAINER_NAME:/usr/share/rpcd/acl.d/luci-base.json
           docker cp luci-patch/patch/luci-mod-system.json $CONTAINER_NAME:/usr/share/luci/menu.d/luci-mod-system.json
           
