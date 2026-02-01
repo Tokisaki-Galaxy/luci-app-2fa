@@ -51,6 +51,8 @@ function is_2fa_enabled(username) {
 // Verify OTP for user
 function verify_otp(username, otp) {
 	let fs = require('fs');
+	let uci = require('uci');
+	let ctx = uci.cursor();
 	
 	if (!otp || otp == '')
 		return false;
@@ -66,25 +68,61 @@ function verify_otp(username, otp) {
 	if (!match(otp, /^[0-9]{6}$/))
 		return false;
 
+	// Get OTP type to determine verification strategy
+	let otp_type = ctx.get('2fa', safe_username, 'type') || 'totp';
+
 	// SECURITY: We use string form of popen() because the array form doesn't
 	// work in current ucode versions on OpenWrt. Shell injection is prevented by:
 	// 1. sanitize_username() above returns null for any input not matching [a-zA-Z0-9_.+-]
 	// 2. We only proceed if safe_username is not null (sanitization passed)
 	// 3. The character set [a-zA-Z0-9_.+-] cannot form shell metacharacters
-	let fd = fs.popen('/usr/libexec/generate_otp.uc ' + safe_username, 'r');
-	if (!fd)
+
+	if (otp_type == 'hotp') {
+		// HOTP verification: use --no-increment to not consume the counter during verification
+		let fd = fs.popen('/usr/libexec/generate_otp.uc ' + safe_username + ' --no-increment', 'r');
+		if (!fd)
+			return false;
+
+		let expected_otp = fd.read('all');
+		fd.close();
+		expected_otp = trim(expected_otp);
+		
+		if (!match(expected_otp, /^[0-9]{6}$/))
+			return false;
+
+		if (constant_time_compare(expected_otp, otp)) {
+			// OTP matches, now increment the counter for HOTP
+			let counter = int(ctx.get('2fa', safe_username, 'counter') || '0');
+			ctx.set('2fa', safe_username, 'counter', '' + (counter + 1));
+			ctx.commit('2fa');
+			return true;
+		}
 		return false;
+	} else {
+		// TOTP verification: check current window and adjacent windows (±1) for time drift tolerance
+		let step = int(ctx.get('2fa', safe_username, 'step') || '30');
+		let current_time = time();
+		
+		// Check window offsets: current (0), previous (-1), next (+1)
+		for (let offset in [0, -1, 1]) {
+			let check_time = current_time + (offset * step);
+			let fd = fs.popen('/usr/libexec/generate_otp.uc ' + safe_username + ' --no-increment --time=' + check_time, 'r');
+			if (!fd)
+				continue;
 
-	let expected_otp = fd.read('all');
-	fd.close();
+			let expected_otp = fd.read('all');
+			fd.close();
+			expected_otp = trim(expected_otp);
+			
+			if (!match(expected_otp, /^[0-9]{6}$/))
+				continue;
 
-	// Trim and validate generated OTP
-	expected_otp = trim(expected_otp);
-	if (!match(expected_otp, /^[0-9]{6}$/))
+			if (constant_time_compare(expected_otp, otp)) {
+				return true;
+			}
+		}
 		return false;
-
-	// Use constant-time comparison to prevent timing attacks
-	return constant_time_compare(expected_otp, otp);
+	}
 }
 
 return {
