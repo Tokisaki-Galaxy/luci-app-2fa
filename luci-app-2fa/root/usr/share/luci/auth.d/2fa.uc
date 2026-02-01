@@ -66,8 +66,12 @@ function verify_otp(username, otp) {
 	if (!match(otp, /^[0-9]{6}$/))
 		return false;
 
-	// Use array form to prevent shell injection
-	let fd = fs.popen(['/usr/libexec/generate_otp.uc', safe_username]);
+	// SECURITY: We use string form of popen() because the array form doesn't
+	// work in current ucode versions on OpenWrt. Shell injection is prevented by:
+	// 1. sanitize_username() above returns null for any input not matching [a-zA-Z0-9_.+-]
+	// 2. We only proceed if safe_username is not null (sanitization passed)
+	// 3. The character set [a-zA-Z0-9_.+-] cannot form shell metacharacters
+	let fd = fs.popen('/usr/libexec/generate_otp.uc ' + safe_username, 'r');
 	if (!fd)
 		return false;
 
