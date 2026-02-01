@@ -78,11 +78,10 @@ function decode_base32(string)
 	for (let i = 0; i < length(clean); i++) {
 		let char_code = ord(clean, i);
 		
-		if (!(char_code in base32_decode_table)) {
+		let value = base32_decode_table[char_code];
+		if (value === null || value === undefined) {
 			continue;
 		}
-		
-		let value = base32_decode_table[char_code];
 		
 		buffer = (buffer << 5) | value;
 		bits_in_buffer += 5;
