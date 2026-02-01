@@ -203,43 +203,6 @@ const methods = {
 
 			return { key: key };
 		}
-	},
-
-	// List all authentication plugins from /usr/share/luci/auth.d/
-	listAuthPlugins: {
-		args: {},
-		call: function(request) {
-			let ctx = cursor();
-			let plugins = [];
-			let auth_plugins_dir = '/usr/share/luci/auth.d';
-
-			// Get global external_auth setting
-			let external_auth = ctx.get('luci', 'main', 'external_auth') || '0';
-
-			// List files in auth.d directory
-			let files = glob(auth_plugins_dir + '/*.uc') || [];
-			
-			for (let path in files) {
-				// Extract filename without extension as plugin name
-				let filename = replace(path, auth_plugins_dir + '/', '');
-				let plugin_name = replace(filename, '.uc', '');
-				
-				// Check if this plugin is disabled
-				let is_disabled = ctx.get('luci', 'sauth', plugin_name + '_disabled');
-				let enabled = (is_disabled != '1');
-				
-				push(plugins, {
-					name: plugin_name,
-					filename: filename,
-					enabled: enabled
-				});
-			}
-
-			return {
-				external_auth: external_auth,
-				plugins: plugins
-			};
-		}
 	}
 };
 

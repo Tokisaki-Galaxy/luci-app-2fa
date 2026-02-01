@@ -6,7 +6,7 @@
 'require rpc';
 
 var callListAuthPlugins = rpc.declare({
-	object: '2fa',
+	object: 'luci',
 	method: 'listAuthPlugins',
 	expect: { }
 });

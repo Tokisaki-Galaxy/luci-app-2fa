@@ -49,14 +49,66 @@ This patch adds a **generic, non-hardcoded authentication plugin mechanism** to 
    - Display plugin-specific error messages
    - Support multiple auth plugins simultaneously
 
+4. **Authentication Settings UI**: A new "Authentication" menu item is added under System > Administration:
+   - View at `/www/luci-static/resources/view/system/authsettings.js`
+   - Allows enabling/disabling external authentication globally
+   - Allows enabling/disabling individual authentication plugins
+
+5. **listAuthPlugins RPC Method**: Added to the `luci` ubus object:
+   - Returns list of installed authentication plugins
+   - Returns global `external_auth` setting status
+
+## File Mapping
+
+### Origin Files (from upstream LuCI)
+
+| Origin File | LuCI Source Path |
+|---|---|
+| `origin/dispatcher.uc` | `modules/luci-base/ucode/dispatcher.uc` |
+| `origin/sysauth.ut` | `modules/luci-base/ucode/template/sysauth.ut` |
+| `origin/bootstrap-sysauth.ut` | `themes/luci-theme-bootstrap/ucode/template/themes/bootstrap/sysauth.ut` |
+| `origin/luci-mod-system.json` | `modules/luci-mod-system/root/usr/share/luci/menu.d/luci-mod-system.json` |
+| `origin/luci` | `modules/luci-base/root/usr/share/rpcd/ucode/luci` |
+| `origin/luci-base.json` | `modules/luci-base/root/usr/share/rpcd/acl.d/luci-base.json` |
+
+### Patched Files (to deploy)
+
+| Patch File | OpenWrt Deployment Path |
+|---|---|
+| `patch/dispatcher.uc` | `/usr/share/ucode/luci/dispatcher.uc` |
+| `patch/sysauth.ut` | `/usr/share/ucode/luci/template/sysauth.ut` |
+| `patch/bootstrap-sysauth.ut` | `/usr/share/ucode/luci/template/themes/bootstrap/sysauth.ut` |
+| `patch/luci-mod-system.json` | `/usr/share/luci/menu.d/luci-mod-system.json` |
+| `patch/luci` | `/usr/share/rpcd/ucode/luci` |
+| `patch/luci-base.json` | `/usr/share/rpcd/acl.d/luci-base.json` |
+| `patch/view/system/authsettings.js` | `/www/luci-static/resources/view/system/authsettings.js` |
+
 ## How to Apply
 
-### For Openwrt Online Patching
+### For OpenWrt Online Patching
 
-copy `patch` folder file and cover to following files to your OpenWrt system:
+Copy `patch` folder files to your OpenWrt system at the corresponding paths:
 
+```bash
+# Dispatcher and templates
+cp patch/dispatcher.uc /usr/share/ucode/luci/dispatcher.uc
+cp patch/sysauth.ut /usr/share/ucode/luci/template/sysauth.ut
+cp patch/bootstrap-sysauth.ut /usr/share/ucode/luci/template/themes/bootstrap/sysauth.ut
+
+# Menu configuration
+cp patch/luci-mod-system.json /usr/share/luci/menu.d/luci-mod-system.json
+
+# RPC backend
+cp patch/luci /usr/share/rpcd/ucode/luci
+
+# ACL configuration
+cp patch/luci-base.json /usr/share/rpcd/acl.d/luci-base.json
+
+# Authentication settings view
+cp patch/view/system/authsettings.js /www/luci-static/resources/view/system/authsettings.js
+
+# Clear cache and restart services
+rm -f /tmp/luci-indexcache*
+/etc/init.d/rpcd restart
 ```
-/usr/share/ucode/luci/dispatcher.uc
-/usr/share/ucode/luci/template/sysauth.ut
-/usr/share/ucode/luci/template/themes/bootstrap/sysauth.ut
-```
+
