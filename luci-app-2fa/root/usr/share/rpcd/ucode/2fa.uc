@@ -152,7 +152,7 @@ const methods = {
 				// safe_username is already validated by sanitize_username() to match [a-zA-Z0-9_.-]+
 				for (let offset in [0, -1, 1]) {
 					let check_time = int(current_time + (offset * step));  // Explicit int conversion
-					let fd = popen('/usr/libexec/generate_otp.uc ' + safe_username + ' --no-increment --time=' + check_time);
+					let fd = popen('ucode /usr/libexec/generate_otp.uc ' + safe_username + ' --no-increment --time=' + check_time);
 					if (!fd)
 						continue;
 

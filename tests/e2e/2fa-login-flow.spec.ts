@@ -53,7 +53,7 @@ async function waitForPageReady(page: Page) {
 
 test.describe('2FA Login Flow', () => {
   
-  test('should show OTP field after password verification when 2FA is enabled', async ({ page }) => {
+  test('should show OTP field on initial login page when 2FA is enabled', async ({ page }) => {
     // Navigate to login page
     await page.goto('/cgi-bin/luci/', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await waitForPageReady(page);
@@ -61,22 +61,11 @@ test.describe('2FA Login Flow', () => {
     // Take screenshot of initial login page
     await takeScreenshot(page, '01-login-page');
     
-    // Fill in password only (no OTP initially)
+    // Verify password field is visible
     const passwordField = page.locator('#luci_password');
     await expect(passwordField).toBeVisible({ timeout: 10000 });
-    await passwordField.fill(PASSWORD);
     
-    // Click login button
-    const loginButton = page.locator('button.cbi-button-positive');
-    await loginButton.click();
-    
-    // Wait for response
-    await waitForPageReady(page);
-    
-    // Take screenshot showing OTP field appeared
-    await takeScreenshot(page, '02-otp-field-shown');
-    
-    // Verify OTP field is now visible
+    // Verify OTP field is already visible on the initial login page (new flow)
     const otpField = page.locator('#luci_otp');
     await expect(otpField).toBeVisible({ timeout: 10000 });
     
@@ -95,11 +84,7 @@ test.describe('2FA Login Flow', () => {
     await expect(passwordField).toBeVisible({ timeout: 10000 });
     await passwordField.fill(PASSWORD);
     
-    // Click login to trigger 2FA check
-    const loginButton = page.locator('button.cbi-button-positive');
-    await loginButton.click();
-    
-    // Wait for OTP field to appear
+    // OTP field should be visible on initial login page with new flow
     const otpField = page.locator('#luci_otp');
     await expect(otpField).toBeVisible({ timeout: 10000 });
     
@@ -110,14 +95,11 @@ test.describe('2FA Login Flow', () => {
     // Fill in OTP field
     await otpField.fill(otpCode);
     
-    // Re-fill password (the form might have cleared it)
-    const newPasswordField = page.locator('#luci_password');
-    await newPasswordField.fill(PASSWORD);
-    
-    // Take screenshot before final submit
+    // Take screenshot before submit
     await takeScreenshot(page, '03-before-2fa-submit');
     
     // Submit login
+    const loginButton = page.locator('button.cbi-button-positive');
     await loginButton.click();
     
     // Wait for redirect
@@ -150,25 +132,18 @@ test.describe('2FA Login Flow', () => {
     await expect(passwordField).toBeVisible({ timeout: 10000 });
     await passwordField.fill(PASSWORD);
     
-    // Click login
-    const loginButton = page.locator('button.cbi-button-positive');
-    await loginButton.click();
-    
-    // Wait for OTP field
+    // OTP field should be visible on initial login page with new flow
     const otpField = page.locator('#luci_otp');
     await expect(otpField).toBeVisible({ timeout: 10000 });
     
     // Fill in incorrect OTP
     await otpField.fill('000000'); // Wrong code
     
-    // Re-fill password
-    const newPasswordField = page.locator('#luci_password');
-    await newPasswordField.fill(PASSWORD);
-    
     // Take screenshot
     await takeScreenshot(page, '05-wrong-otp');
     
     // Submit
+    const loginButton = page.locator('button.cbi-button-positive');
     await loginButton.click();
     
     // Wait for response
@@ -204,15 +179,13 @@ test.describe('2FA Login Flow', () => {
     // and generate the same code (verified via curl in setup)
     expect(standardTOTP).toMatch(/^\d{6}$/);
     
-    // Fill in credentials and OTP
+    // Fill in credentials - both password and OTP on same page with new flow
     await page.locator('#luci_password').fill(PASSWORD);
-    await page.locator('button.cbi-button-positive').click();
     
-    // Wait for OTP field and fill with standard-generated code
+    // OTP field should be visible on initial login page
     const otpField = page.locator('#luci_otp');
     await expect(otpField).toBeVisible({ timeout: 10000 });
     await otpField.fill(standardTOTP);
-    await page.locator('#luci_password').fill(PASSWORD);
     
     await page.locator('button.cbi-button-positive').click();
     await waitForPageReady(page);

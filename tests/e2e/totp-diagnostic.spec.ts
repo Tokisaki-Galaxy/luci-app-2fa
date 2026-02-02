@@ -263,15 +263,12 @@ test.describe("TOTP Diagnostic Tests", () => {
     await page.waitForSelector("#luci_password", { timeout: 30000 });
     await screenshot(page, "01-initial-login-page");
 
-    // Step 1: Enter password to trigger 2FA
-    console.log("Step 1: Submitting password to trigger 2FA...");
-    await page.locator("#luci_password").fill(PASSWORD);
-    await page.locator("button.cbi-button-positive").click();
-
-    // Wait for OTP field to appear
-    await page.waitForSelector("#luci_otp", { timeout: 15000 });
+    // Step 1: Check that OTP field is already visible on login page (new flow)
+    console.log("Step 1: Checking OTP field visibility on initial page...");
+    const otpField = page.locator("#luci_otp");
+    await expect(otpField).toBeVisible({ timeout: 15000 });
+    console.log("  ✓ OTP field already visible on login page\n");
     await screenshot(page, "02-otp-field-shown");
-    console.log("  ✓ OTP field appeared\n");
 
     // Step 2: Generate and log OTP values
     console.log("Step 2: Generating TOTP codes...");
@@ -291,13 +288,13 @@ test.describe("TOTP Diagnostic Tests", () => {
     console.log(`  Ucode OTP:               ${ucodeTOTP}`);
     console.log("");
 
-    // Step 3: Fill OTP and password, then submit
-    console.log("Step 3: Submitting OTP and password...");
+    // Step 3: Fill password and OTP, then submit (single submission with new flow)
+    console.log("Step 3: Submitting password and OTP together...");
     const otpToUse = externalTOTP;
     console.log(`  Using OTP: ${otpToUse}`);
 
-    await page.locator("#luci_otp").fill(otpToUse);
     await page.locator("#luci_password").fill(PASSWORD);
+    await otpField.fill(otpToUse);
     await screenshot(page, "03-before-final-submit");
 
     // Listen for console errors
@@ -362,12 +359,9 @@ test.describe("TOTP Diagnostic Tests", () => {
 
     await page.waitForSelector("#luci_password", { timeout: 30000 });
 
-    // Enter password
-    await page.locator("#luci_password").fill(PASSWORD);
-    await page.locator("button.cbi-button-positive").click();
-
-    // Wait for OTP field
-    await page.waitForSelector("#luci_otp", { timeout: 15000 });
+    // OTP field should be visible on initial login page with new flow
+    const otpField = page.locator("#luci_otp");
+    await expect(otpField).toBeVisible({ timeout: 15000 });
 
     // Use container time for OTP generation
     const containerTime = getContainerTime();
@@ -377,8 +371,9 @@ test.describe("TOTP Diagnostic Tests", () => {
     console.log(`OTP generated:  ${otpToUse}`);
     console.log("");
 
-    await page.locator("#luci_otp").fill(otpToUse);
+    // Fill both password and OTP on same page (new single-submission flow)
     await page.locator("#luci_password").fill(PASSWORD);
+    await otpField.fill(otpToUse);
     await screenshot(page, "05-container-time-otp");
 
     await page.locator("button.cbi-button-positive").click();
