@@ -444,15 +444,18 @@ const methods = {
 			}
 
 			// Check system time calibration for TOTP
+			// When time is uncalibrated, completely disable 2FA for safety
+			// (users can still log in with just username/password)
 			let otp_type = ctx.get('2fa', safe_username, 'type') || 'totp';
 			if (otp_type == 'totp') {
 				let time_check = check_time_calibration();
 				if (!time_check.calibrated) {
-					// Time not calibrated - disable TOTP but allow backup codes
+					// Time not calibrated - disable 2FA completely to prevent lockout
+					// Note: time_not_calibrated flag allows UI to show informative message
+					// about why 2FA is disabled (useful for settings page warning)
 					return { 
-						enabled: true, 
+						enabled: false, 
 						time_not_calibrated: true,
-						backup_codes_only: true,
 						current_time: time_check.current_time,
 						min_valid_time: time_check.min_valid_time
 					};
@@ -544,20 +547,6 @@ const methods = {
 			
 			// Get OTP type to determine verification strategy
 			let otp_type = ctx.get('2fa', safe_username, 'type') || 'totp';
-			
-			// For TOTP, check time calibration
-			if (otp_type == 'totp') {
-				let time_check = check_time_calibration();
-				if (!time_check.calibrated) {
-					// Time not calibrated - only backup codes are accepted
-					if (client_ip) record_failed_attempt(client_ip);
-					return { 
-						result: false, 
-						time_not_calibrated: true,
-						message: 'System time is not calibrated. Please use a backup code or contact administrator.'
-					};
-				}
-			}
 			
 			if (otp_type == 'hotp') {
 				// HOTP verification: use --no-increment to not consume the counter during verification

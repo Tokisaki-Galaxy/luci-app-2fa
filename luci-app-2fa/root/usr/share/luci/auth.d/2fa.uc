@@ -353,7 +353,7 @@ function is_2fa_enabled(username) {
 }
 
 // Verify OTP for user (also supports backup codes)
-// Returns: { success: bool, backup_code_used: bool, time_not_calibrated: bool }
+// Returns: { success: bool, backup_code_used: bool }
 function verify_otp(username, otp) {
 	let fs = require('fs');
 	let uci = require('uci');
@@ -370,7 +370,6 @@ function verify_otp(username, otp) {
 	otp = trim(otp);
 	
 	// Check if this is a backup code (format: XXXX-XXXX or XXXXXXXX with letters/numbers)
-	// Backup codes always work regardless of time calibration
 	if (match(otp, /^[A-Za-z0-9]{4}-?[A-Za-z0-9]{4}$/)) {
 		let backup_result = verify_backup_code(safe_username, otp);
 		if (backup_result.valid) {
@@ -384,19 +383,6 @@ function verify_otp(username, otp) {
 
 	// Get OTP type to determine verification strategy
 	let otp_type = ctx.get('2fa', safe_username, 'type') || 'totp';
-
-	// For TOTP, check time calibration first
-	if (otp_type == 'totp') {
-		let time_check = check_time_calibration();
-		if (!time_check.calibrated) {
-			// Time not calibrated - only backup codes are accepted (already checked above)
-			return { 
-				success: false, 
-				time_not_calibrated: true,
-				message: 'System time is not calibrated. Please use a backup code.'
-			};
-		}
-	}
 
 	// SECURITY: We use string form of popen() because the array form doesn't
 	// work in current ucode versions on OpenWrt. Shell injection is prevented by:
@@ -527,17 +513,19 @@ return {
 			return { required: false };
 		}
 
-		// Check time calibration for TOTP - provide warning message
+		// Check time calibration for TOTP
+		// When time is uncalibrated, completely disable 2FA to prevent lockout
 		let uci = require('uci');
 		let ctx = uci.cursor();
 		let safe_username = sanitize_username(user);
 		let otp_type = ctx.get('2fa', safe_username, 'type') || 'totp';
 		
-		let time_warning = '';
 		if (otp_type == 'totp') {
 			let time_check = check_time_calibration();
 			if (!time_check.calibrated) {
-				time_warning = ' WARNING: System time appears uncalibrated. TOTP codes may not work. Please use a backup code instead.';
+				// Time not calibrated - skip 2FA completely to prevent lockout
+				// Note: time_not_calibrated flag useful for logging/debugging
+				return { required: false, time_not_calibrated: true };
 			}
 		}
 
@@ -556,7 +544,7 @@ return {
 					required: true
 				}
 			],
-			message: 'Please enter your one-time password from your authenticator app, or a backup code.' + time_warning
+			message: 'Please enter your one-time password from your authenticator app, or a backup code.'
 		};
 	},
 
@@ -608,14 +596,6 @@ return {
 		
 		if (!verify_result.success) {
 			if (client_ip) record_failed_attempt(client_ip);
-			
-			// Provide specific error message for time calibration issues
-			if (verify_result.time_not_calibrated) {
-				return {
-					success: false,
-					message: 'System time is not calibrated. TOTP codes are disabled. Please use a backup code to log in.'
-				};
-			}
 			
 			return {
 				success: false,
