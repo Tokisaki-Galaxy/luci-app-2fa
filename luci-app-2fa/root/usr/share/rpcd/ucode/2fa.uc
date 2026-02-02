@@ -610,6 +610,62 @@ const methods = {
 			unlink(RATE_LIMIT_FILE);
 			return { result: true };
 		}
+	},
+
+	// Get current TOTP code for verification (admin view)
+	getCurrentCode: {
+		args: { username: '' },
+		call: function(request) {
+			let username = request.args.username || 'root';
+			let ctx = cursor();
+
+			// Sanitize username
+			let safe_username = sanitize_username(username);
+			if (!safe_username) {
+				return { code: '', error: 'Invalid username' };
+			}
+
+			// Check if user has a key configured
+			let key = ctx.get('2fa', safe_username, 'key');
+			if (!key || key == '') {
+				return { code: '', error: 'No key configured' };
+			}
+
+			// Get OTP type
+			let otp_type = ctx.get('2fa', safe_username, 'type') || 'totp';
+
+			if (otp_type == 'hotp') {
+				// For HOTP, we show the next code without incrementing
+				let fd = popen('/usr/libexec/generate_otp.uc ' + safe_username + ' --no-increment');
+				if (!fd)
+					return { code: '', error: 'Failed to generate code' };
+
+				let code = fd.read('all');
+				fd.close();
+				code = trim(code);
+
+				let counter = ctx.get('2fa', safe_username, 'counter') || '0';
+				return { code: code, type: 'hotp', counter: counter };
+			} else {
+				// For TOTP, generate the current code
+				let step = int(ctx.get('2fa', safe_username, 'step') || '30');
+				if (step <= 0) step = 30;
+				let current_time = time();
+				
+				let fd = popen('ucode /usr/libexec/generate_otp.uc ' + safe_username + ' --no-increment --time=' + current_time);
+				if (!fd)
+					return { code: '', error: 'Failed to generate code' };
+
+				let code = fd.read('all');
+				fd.close();
+				code = trim(code);
+
+				// Calculate time remaining in current period
+				let time_remaining = step - (current_time % step);
+
+				return { code: code, type: 'totp', step: step, time_remaining: time_remaining };
+			}
+		}
 	}
 };
 

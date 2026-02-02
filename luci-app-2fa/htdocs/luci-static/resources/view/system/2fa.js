@@ -30,6 +30,13 @@ var callGenerateKey = rpc.declare({
 	expect: { key: '' }
 });
 
+var callGetCurrentCode = rpc.declare({
+	object: '2fa',
+	method: 'getCurrentCode',
+	params: [ 'username' ],
+	expect: { code: '', type: 'totp' }
+});
+
 var callGetRateLimitStatus = rpc.declare({
 	object: '2fa',
 	method: 'getRateLimitStatus',
@@ -80,6 +87,69 @@ var CBIGenerateOTPKey = form.Value.extend({
 	formvalue: function(section_id) {
 		var inputEl = document.getElementById(this.cbid(section_id));
 		return inputEl ? inputEl.value : null;
+	}
+});
+
+// Live TOTP Code Display Widget
+var CBICurrentCode = form.DummyValue.extend({
+	renderWidget: function(section_id, option_id, cfgvalue) {
+		var key = uci.get('2fa', 'root', 'key') || '';
+		var containerDiv = E('div', { 'id': 'current-code-container' });
+
+		if (!key) {
+			containerDiv.appendChild(E('em', {}, _('Generate a key first to see the current code')));
+			return containerDiv;
+		}
+
+		var codeDisplay = E('div', { 'class': 'current-code-display', 'style': 'display: flex; align-items: center; gap: 15px;' }, [
+			E('span', { 
+				'id': 'current-totp-code',
+				'style': 'font-size: 28px; font-weight: bold; font-family: monospace; letter-spacing: 5px; color: #0066cc;'
+			}, _('Loading...')),
+			E('span', { 
+				'id': 'totp-countdown',
+				'style': 'font-size: 14px; color: #666;'
+			}, '')
+		]);
+
+		containerDiv.appendChild(codeDisplay);
+
+		// Use LuCI's poll system for updates
+		L.Poll.add(function() {
+			var codeEl = document.getElementById('current-totp-code');
+			var countdownEl = document.getElementById('totp-countdown');
+
+			if (!codeEl) {
+				return;
+			}
+
+			return callGetCurrentCode('root').then(function(res) {
+				if (res.code && codeEl) {
+					codeEl.textContent = res.code;
+					
+					if (res.type === 'totp' && res.time_remaining !== undefined && countdownEl) {
+						countdownEl.textContent = _('Expires in %d seconds').format(res.time_remaining);
+						
+						// Change color when time is running low
+						if (res.time_remaining <= 5) {
+							codeEl.style.color = '#cc0000';
+						} else {
+							codeEl.style.color = '#0066cc';
+						}
+					} else if (res.type === 'hotp' && countdownEl) {
+						countdownEl.textContent = _('Counter: %s').format(res.counter || '0');
+						codeEl.style.color = '#0066cc';
+					}
+				}
+			}).catch(function(err) {
+				if (codeEl) {
+					codeEl.textContent = '------';
+					codeEl.style.color = '#999';
+				}
+			});
+		}, 1);
+
+		return containerDiv;
 	}
 });
 
@@ -227,94 +297,114 @@ return view.extend({
 			_('Configure two-factor authentication for LuCI login. ' +
 			  'When enabled, you will need to enter a one-time password from your authenticator app in addition to your username and password.'));
 
-		// Basic Settings
-		s = m.section(form.NamedSection, 'settings', 'settings', _('Basic Settings'));
+		// Main settings section with tabs
+		s = m.section(form.NamedSection, 'settings', 'settings', _('Settings'));
 		s.anonymous = true;
+		s.addremove = false;
 
-		o = s.option(form.Flag, 'enabled', _('Enable 2FA'),
+		// Tab 1: OTP Settings
+		s.tab('otp', _('OTP Settings'));
+
+		// Tab 2: Security Settings
+		s.tab('security', _('Security'));
+
+		// === OTP Tab Options ===
+
+		// Enable 2FA (in OTP tab)
+		o = s.taboption('otp', form.Flag, 'enabled', _('Enable 2FA'),
 			_('Enable two-factor authentication for LuCI login'));
 		o.rmempty = false;
 
-		// Authentication Settings (OTP)
-		s = m.section(form.NamedSection, 'root', 'login', _('OTP Settings'),
-			_('Configure OTP settings for root user'));
-		s.anonymous = true;
+		// === Security Tab Options ===
 
-		o = s.option(CBIGenerateOTPKey, 'key', _('Secret Key'),
-			_('The secret key used to generate OTP codes. Generate a new key to set up 2FA.'));
-
-		o = s.option(form.ListValue, 'type', _('OTP Type'),
-			_('TOTP (Time-based) requires synchronized time. HOTP (Counter-based) works offline.'));
-		o.value('totp', _('TOTP (Time-based)'));
-		o.value('hotp', _('HOTP (Counter-based)'));
-		o.default = 'totp';
-
-		o = s.option(form.Value, 'step', _('Time Step'),
-			_('Time step in seconds for TOTP (default: 30)'));
-		o.depends('type', 'totp');
-		o.default = '30';
-		o.datatype = 'uinteger';
-
-		o = s.option(form.Value, 'counter', _('Counter'),
-			_('Current counter value for HOTP'));
-		o.depends('type', 'hotp');
-		o.default = '0';
-		o.datatype = 'uinteger';
-
-		o = s.option(CBIQRCode, '_qrcode', _('QR Code'),
-			_('Scan with your authenticator app (Google Authenticator, Authy, etc.)'));
-
-		// IP Whitelist Settings
-		s = m.section(form.NamedSection, 'settings', 'settings', _('IP Whitelist'),
-			_('Allow certain IP addresses or ranges to bypass 2FA authentication. ' +
+		// IP Whitelist section
+		o = s.taboption('security', form.Flag, 'ip_whitelist_enabled', _('Enable IP Whitelist'),
+			_('When enabled, IP addresses in the whitelist will bypass 2FA. ' +
 			  'This is useful for trusted networks like your local LAN.'));
-		s.anonymous = true;
-
-		o = s.option(form.Flag, 'ip_whitelist_enabled', _('Enable IP Whitelist'),
-			_('When enabled, IP addresses in the whitelist will bypass 2FA'));
 		o.rmempty = false;
 
-		o = s.option(CBIIPWhitelist, 'ip_whitelist', _('Whitelisted IPs'),
+		o = s.taboption('security', CBIIPWhitelist, 'ip_whitelist', _('Whitelisted IPs'),
 			_('Enter IP addresses or CIDR ranges that can bypass 2FA. ' +
 			  'Examples: 192.168.1.100, 192.168.1.0/24, 10.0.0.0/8'));
 		o.depends('ip_whitelist_enabled', '1');
 		o.placeholder = '192.168.1.0/24';
 
-		// Rate Limiting / Brute Force Protection
-		s = m.section(form.NamedSection, 'settings', 'settings', _('Brute Force Protection'),
+		// Brute Force Protection section
+		o = s.taboption('security', form.Flag, 'rate_limit_enabled', _('Enable Brute Force Protection'),
 			_('Protect against brute force attacks by limiting failed login attempts. ' +
-			  'After too many failed attempts, the IP will be temporarily blocked.'));
-		s.anonymous = true;
-
-		o = s.option(form.Flag, 'rate_limit_enabled', _('Enable Brute Force Protection'),
-			_('When enabled, IPs with too many failed login attempts will be temporarily blocked'));
+			  'When enabled, IPs with too many failed login attempts will be temporarily blocked.'));
 		o.rmempty = false;
 
-		o = s.option(form.Value, 'rate_limit_max_attempts', _('Max Attempts'),
+		o = s.taboption('security', form.Value, 'rate_limit_max_attempts', _('Max Attempts'),
 			_('Maximum number of failed login attempts allowed within the time window'));
 		o.depends('rate_limit_enabled', '1');
 		o.default = '5';
 		o.datatype = 'range(1,100)';
 		o.placeholder = '5';
 
-		o = s.option(form.Value, 'rate_limit_window', _('Time Window (seconds)'),
+		o = s.taboption('security', form.Value, 'rate_limit_window', _('Time Window (seconds)'),
 			_('Time window in seconds for counting failed attempts'));
 		o.depends('rate_limit_enabled', '1');
 		o.default = '60';
 		o.datatype = 'range(1,3600)';
 		o.placeholder = '60';
 
-		o = s.option(form.Value, 'rate_limit_lockout', _('Lockout Duration (seconds)'),
+		o = s.taboption('security', form.Value, 'rate_limit_lockout', _('Lockout Duration (seconds)'),
 			_('Duration in seconds to block an IP after exceeding the max attempts'));
 		o.depends('rate_limit_enabled', '1');
 		o.default = '300';
 		o.datatype = 'range(1,86400)';
 		o.placeholder = '300';
 
-		o = s.option(CBIRateLimitStatus, '_rate_limit_status', _('Rate Limit Status'),
+		o = s.taboption('security', CBIRateLimitStatus, '_rate_limit_status', _('Rate Limit Status'),
 			_('View and manage currently rate-limited IP addresses'));
 		o.depends('rate_limit_enabled', '1');
 
+		// === OTP Configuration Section (separate from tabs) ===
+		var otpSection = m.section(form.NamedSection, 'root', 'login', _('OTP Configuration'),
+			_('Configure OTP settings for root user'));
+		otpSection.anonymous = true;
+		otpSection.addremove = false;
+
+		o = otpSection.option(CBIGenerateOTPKey, 'key', _('Secret Key'),
+			_('The secret key used to generate OTP codes. Generate a new key to set up 2FA.'));
+
+		o = otpSection.option(CBICurrentCode, '_current_code', _('Current Code'),
+			_('This is the current one-time password. Use it to verify your authenticator app is configured correctly.'));
+
+		o = otpSection.option(form.ListValue, 'type', _('OTP Type'),
+			_('TOTP (Time-based) requires synchronized time. HOTP (Counter-based) works offline.'));
+		o.value('totp', _('TOTP (Time-based)'));
+		o.value('hotp', _('HOTP (Counter-based)'));
+		o.default = 'totp';
+
+		o = otpSection.option(form.Value, 'step', _('Time Step'),
+			_('Time step in seconds for TOTP (default: 30)'));
+		o.depends('type', 'totp');
+		o.default = '30';
+		o.datatype = 'uinteger';
+
+		o = otpSection.option(form.Value, 'counter', _('Counter'),
+			_('Current counter value for HOTP'));
+		o.depends('type', 'hotp');
+		o.default = '0';
+		o.datatype = 'uinteger';
+
+		o = otpSection.option(CBIQRCode, '_qrcode', _('QR Code'),
+			_('Scan with your authenticator app (Google Authenticator, Authy, etc.)'));
+
 		return m.render();
+	},
+
+	// Clean up polling when view is destroyed
+	handleSaveApply: function(ev, mode) {
+		return this.handleSave(ev).then(function() {
+			// Stop polling on save
+			if (totpPollInterval) {
+				clearInterval(totpPollInterval);
+				totpPollInterval = null;
+			}
+			return uci.apply();
+		});
 	}
 });
