@@ -2,7 +2,8 @@ import { test, expect, Page } from '@playwright/test';
 
 import * as OTPAuth from 'otpauth';
 
-// Test configuration - should match the 2FA setup in the container
+// Test configuration - matches the 2FA setup configured in the CI container
+// This is a well-known test secret used only for E2E testing - NOT production
 const TEST_SECRET = 'JBSWY3DPEHPK3PXP';
 
 /**
