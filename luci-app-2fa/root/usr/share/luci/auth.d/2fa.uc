@@ -6,6 +6,38 @@
 // This plugin implements TOTP/HOTP verification as an additional
 // authentication factor for LuCI login.
 
+// Default minimum valid time (2026-01-01 00:00:00 UTC)
+// TOTP depends on accurate system time. If system clock is not calibrated
+// (e.g., after power loss on devices without RTC battery), TOTP codes will
+// be incorrect and users will be locked out. This threshold disables TOTP
+// when system time appears uncalibrated.
+const DEFAULT_MIN_VALID_TIME = 1767225600;
+
+// Check if system time is calibrated (not earlier than minimum valid time)
+function check_time_calibration() {
+	let uci = require('uci');
+	let ctx = uci.cursor();
+	let min_valid_time = int(ctx.get('2fa', 'settings', 'min_valid_time') || '' + DEFAULT_MIN_VALID_TIME);
+	let current_time = time();
+	
+	return {
+		calibrated: current_time >= min_valid_time,
+		current_time: current_time,
+		min_valid_time: min_valid_time
+	};
+}
+
+// Generate a simple hash for backup code verification
+function simple_hash(str) {
+	let hash = 0;
+	for (let i = 0; i < length(str); i++) {
+		let c = ord(str, i);
+		hash = ((hash << 5) - hash + c) & 0xFFFFFFFF;
+		hash = hash ^ (hash >> 16);
+	}
+	return sprintf('%08x', hash & 0xFFFFFFFF);
+}
+
 // Constant-time string comparison to prevent timing attacks
 function constant_time_compare(a, b) {
 	if (length(a) != length(b))
@@ -16,6 +48,50 @@ function constant_time_compare(a, b) {
 		result = result | (ord(a, i) ^ ord(b, i));
 	}
 	return result == 0;
+}
+
+// Verify a backup code
+function verify_backup_code(username, code) {
+	let uci = require('uci');
+	let ctx = uci.cursor();
+	
+	// Normalize the code (remove dashes, uppercase)
+	code = replace(uc(code), '-', '');
+	// Re-add dash for hashing (stored format is XXXX-XXXX)
+	if (length(code) == 8) {
+		code = substr(code, 0, 4) + '-' + substr(code, 4, 4);
+	}
+	
+	let code_hash = simple_hash(code);
+	
+	// Get stored backup codes
+	let user_config = ctx.get_all('2fa', username);
+	if (!user_config || !user_config.backup_codes) {
+		return { valid: false, consumed: false };
+	}
+	
+	let stored_codes = user_config.backup_codes;
+	if (type(stored_codes) == 'string') {
+		stored_codes = [stored_codes];
+	}
+	
+	// Check if the code matches any stored hash
+	for (let i = 0; i < length(stored_codes); i++) {
+		let stored_hash = stored_codes[i];
+		if (stored_hash && stored_hash != '' && constant_time_compare(stored_hash, code_hash)) {
+			// Code is valid - remove it (one-time use)
+			ctx.delete('2fa', username, 'backup_codes');
+			for (let j = 0; j < length(stored_codes); j++) {
+				if (j != i && stored_codes[j] && stored_codes[j] != '') {
+					ctx.list_append('2fa', username, 'backup_codes', stored_codes[j]);
+				}
+			}
+			ctx.commit('2fa');
+			return { valid: true, consumed: true };
+		}
+	}
+	
+	return { valid: false, consumed: false };
 }
 
 // Sanitize username to prevent command injection
@@ -255,28 +331,51 @@ function is_2fa_enabled(username) {
 	return true;
 }
 
-// Verify OTP for user
+// Verify OTP for user (also supports backup codes)
+// Returns: { success: bool, backup_code_used: bool, time_not_calibrated: bool }
 function verify_otp(username, otp) {
 	let fs = require('fs');
 	let uci = require('uci');
 	let ctx = uci.cursor();
 	
 	if (!otp || otp == '')
-		return false;
+		return { success: false };
 
 	let safe_username = sanitize_username(username);
 	if (!safe_username)
-		return false;
+		return { success: false };
 
 	// Trim and normalize input
 	otp = trim(otp);
 	
+	// Check if this is a backup code (format: XXXX-XXXX or XXXXXXXX with letters/numbers)
+	// Backup codes always work regardless of time calibration
+	if (match(otp, /^[A-Za-z0-9]{4}-?[A-Za-z0-9]{4}$/)) {
+		let backup_result = verify_backup_code(safe_username, otp);
+		if (backup_result.valid) {
+			return { success: true, backup_code_used: true };
+		}
+	}
+	
 	// Validate OTP format: must be exactly 6 digits
 	if (!match(otp, /^[0-9]{6}$/))
-		return false;
+		return { success: false };
 
 	// Get OTP type to determine verification strategy
 	let otp_type = ctx.get('2fa', safe_username, 'type') || 'totp';
+
+	// For TOTP, check time calibration first
+	if (otp_type == 'totp') {
+		let time_check = check_time_calibration();
+		if (!time_check.calibrated) {
+			// Time not calibrated - only backup codes are accepted (already checked above)
+			return { 
+				success: false, 
+				time_not_calibrated: true,
+				message: 'System time is not calibrated. Please use a backup code.'
+			};
+		}
+	}
 
 	// SECURITY: We use string form of popen() because the array form doesn't
 	// work in current ucode versions on OpenWrt. Shell injection is prevented by:
@@ -289,23 +388,23 @@ function verify_otp(username, otp) {
 		// SECURITY: safe_username is validated by sanitize_username() to match [a-zA-Z0-9_.+-]+
 		let fd = fs.popen('/usr/libexec/generate_otp.uc ' + safe_username + ' --no-increment', 'r');
 		if (!fd)
-			return false;
+			return { success: false };
 
 		let expected_otp = fd.read('all');
 		fd.close();
 		expected_otp = trim(expected_otp);
 		
 		if (!match(expected_otp, /^[0-9]{6}$/))
-			return false;
+			return { success: false };
 
 		if (constant_time_compare(expected_otp, otp)) {
 			// OTP matches, now increment the counter for HOTP
 			let counter = int(ctx.get('2fa', safe_username, 'counter') || '0');
 			ctx.set('2fa', safe_username, 'counter', '' + (counter + 1));
 			ctx.commit('2fa');
-			return true;
+			return { success: true };
 		}
-		return false;
+		return { success: false };
 	} else {
 		// TOTP verification: check current window and adjacent windows (±1) for time drift tolerance
 		let step = int(ctx.get('2fa', safe_username, 'step') || '30');
@@ -329,10 +428,10 @@ function verify_otp(username, otp) {
 				continue;
 
 			if (constant_time_compare(expected_otp, otp)) {
-				return true;
+				return { success: true };
 			}
 		}
-		return false;
+		return { success: false };
 	}
 }
 
@@ -407,22 +506,36 @@ return {
 			return { required: false };
 		}
 
+		// Check time calibration for TOTP - provide warning message
+		let uci = require('uci');
+		let ctx = uci.cursor();
+		let safe_username = sanitize_username(user);
+		let otp_type = ctx.get('2fa', safe_username, 'type') || 'totp';
+		
+		let time_warning = '';
+		if (otp_type == 'totp') {
+			let time_check = check_time_calibration();
+			if (!time_check.calibrated) {
+				time_warning = ' WARNING: System time appears uncalibrated. TOTP codes may not work. Please use a backup code instead.';
+			}
+		}
+
 		return {
 			required: true,
 			fields: [
 				{
 					name: 'luci_otp',
 					type: 'text',
-					label: 'One-Time Password',
-					placeholder: '123456',
-					inputmode: 'numeric',
-					pattern: '[0-9]*',
-					maxlength: 6,
+					label: 'One-Time Password or Backup Code',
+					placeholder: '123456 or XXXX-XXXX',
+					inputmode: 'text',
+					pattern: '[0-9A-Za-z-]*',
+					maxlength: 9,
 					autocomplete: 'one-time-code',
 					required: true
 				}
 			],
-			message: 'Please enter your one-time password from your authenticator app.'
+			message: 'Please enter your one-time password from your authenticator app, or a backup code.' + time_warning
 		};
 	},
 
@@ -466,21 +579,35 @@ return {
 			if (client_ip) record_failed_attempt(client_ip);
 			return {
 				success: false,
-				message: 'Please enter your one-time password.'
+				message: 'Please enter your one-time password or backup code.'
 			};
 		}
 
-		if (!verify_otp(user, otp)) {
+		let verify_result = verify_otp(user, otp);
+		
+		if (!verify_result.success) {
 			if (client_ip) record_failed_attempt(client_ip);
+			
+			// Provide specific error message for time calibration issues
+			if (verify_result.time_not_calibrated) {
+				return {
+					success: false,
+					message: 'System time is not calibrated. TOTP codes are disabled. Please use a backup code to log in.'
+				};
+			}
+			
 			return {
 				success: false,
-				message: 'Invalid one-time password. Please try again.'
+				message: 'Invalid one-time password or backup code. Please try again.'
 			};
 		}
 
 		// Clear rate limit on successful login
 		if (client_ip) clear_rate_limit(client_ip);
 		
-		return { success: true };
+		return { 
+			success: true,
+			backup_code_used: verify_result.backup_code_used || false
+		};
 	}
 };
