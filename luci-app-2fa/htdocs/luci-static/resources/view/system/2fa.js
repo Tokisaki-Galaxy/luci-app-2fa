@@ -354,8 +354,9 @@ return view.extend({
 
 		// Strict Mode checkbox
 		o = s.taboption('basic', form.Flag, 'strict_mode', _('Strict Mode'),
-			_('When enabled: if system time is before 2026, TOTP login will be blocked for all IPs except local subnets (192.168.0.0/16 and 10.0.0.0/8), which bypass 2FA completely. ' +
-			  'When disabled: uncalibrated system time bypasses TOTP 2FA for all IPs.'));
+			_('Controls behavior when system time appears uncalibrated (before 2026). ' +
+			  'When ENABLED: Non-local IPs are blocked from logging in; local subnets (192.168.0.0/16, 10.0.0.0/8) bypass 2FA entirely. ' +
+			  'When DISABLED: All IPs bypass 2FA when time is uncalibrated (less secure but prevents lockouts).'));
 		o.rmempty = false;
 		o.ucisection = 'settings';
 

@@ -353,7 +353,8 @@ const methods = {
 								min_valid_time: time_check.min_valid_time
 							};
 						} else {
-							// Not local subnet - block login (2FA required but will fail)
+							// Not local subnet - indicate blocked state for UI/client
+							// The actual blocking with clear message happens in auth.d/2fa.uc check() function
 							return { 
 								enabled: true,
 								blocked: true,
