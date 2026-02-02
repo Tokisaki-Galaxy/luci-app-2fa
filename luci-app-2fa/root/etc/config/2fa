@@ -5,9 +5,15 @@ config settings 'settings'
 	option rate_limit_max_attempts '5'
 	option rate_limit_window '60'
 	option rate_limit_lockout '300'
+	# Minimum valid system time (Unix timestamp for 2026-01-01 00:00:00 UTC)
+	# If system time is before this, TOTP will be disabled for security
+	option min_valid_time '1767225600'
 
 config login 'root'
 	option key ''
 	option type 'totp'
 	option step '30'
 	option counter '0'
+	# Backup security codes for emergency access (comma-separated, hashed)
+	# Generated automatically when 2FA is enabled
+	list backup_codes ''

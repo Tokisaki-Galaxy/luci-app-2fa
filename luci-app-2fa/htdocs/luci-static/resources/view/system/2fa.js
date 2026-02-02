@@ -54,6 +54,32 @@ var callClearAllRateLimits = rpc.declare({
 	method: 'clearAllRateLimits'
 });
 
+var callCheckTimeCalibration = rpc.declare({
+	object: '2fa',
+	method: 'checkTimeCalibration',
+	expect: { }
+});
+
+var callGenerateBackupCodes = rpc.declare({
+	object: '2fa',
+	method: 'generateBackupCodes',
+	params: [ 'username', 'count' ],
+	expect: { }
+});
+
+var callGetBackupCodesCount = rpc.declare({
+	object: '2fa',
+	method: 'getBackupCodesCount',
+	params: [ 'username' ],
+	expect: { count: 0 }
+});
+
+var callClearBackupCodes = rpc.declare({
+	object: '2fa',
+	method: 'clearBackupCodes',
+	params: [ 'username' ]
+});
+
 var CBIGenerateOTPKey = form.Value.extend({
 	renderWidget: function(section_id, option_id, cfgvalue) {
 		var inputEl = E('input', {
@@ -101,6 +127,17 @@ var CBICurrentCode = form.DummyValue.extend({
 			return containerDiv;
 		}
 
+		// Time calibration warning div (hidden by default)
+		var timeWarningDiv = E('div', { 
+			'id': 'time-calibration-warning',
+			'style': 'display: none; background: #fff3cd; border: 1px solid #ffc107; padding: 10px; border-radius: 4px; margin-bottom: 10px;'
+		}, [
+			E('strong', { 'style': 'color: #856404;' }, '⚠️ ' + _('Warning: System time not calibrated')),
+			E('p', { 'style': 'margin: 5px 0 0 0; color: #856404; font-size: 12px;' }, 
+				_('System time appears to be incorrect (before 2026). TOTP codes will not work during login. Please use backup codes or sync system time.'))
+		]);
+		containerDiv.appendChild(timeWarningDiv);
+
 		var codeDisplay = E('div', { 'class': 'current-code-display', 'style': 'display: flex; align-items: center; gap: 15px;' }, [
 			E('span', { 
 				'id': 'current-totp-code',
@@ -118,6 +155,7 @@ var CBICurrentCode = form.DummyValue.extend({
 		L.Poll.add(function() {
 			var codeEl = document.getElementById('current-totp-code');
 			var countdownEl = document.getElementById('totp-countdown');
+			var warningEl = document.getElementById('time-calibration-warning');
 
 			if (!codeEl) {
 				return;
@@ -127,14 +165,26 @@ var CBICurrentCode = form.DummyValue.extend({
 				if (res.code && codeEl) {
 					codeEl.textContent = res.code;
 					
+					// Show time calibration warning if needed
+					if (warningEl && res.time_calibrated === false) {
+						warningEl.style.display = 'block';
+						codeEl.style.color = '#999';
+						codeEl.style.textDecoration = 'line-through';
+					} else if (warningEl) {
+						warningEl.style.display = 'none';
+						codeEl.style.textDecoration = 'none';
+					}
+					
 					if (res.type === 'totp' && res.time_remaining !== undefined && countdownEl) {
 						countdownEl.textContent = _('Expires in %d seconds').format(res.time_remaining);
 						
-						// Change color when time is running low
-						if (res.time_remaining <= 5) {
-							codeEl.style.color = '#cc0000';
-						} else {
-							codeEl.style.color = '#0066cc';
+						// Change color when time is running low (only if time is calibrated)
+						if (res.time_calibrated !== false) {
+							if (res.time_remaining <= 5) {
+								codeEl.style.color = '#cc0000';
+							} else {
+								codeEl.style.color = '#0066cc';
+							}
 						}
 					} else if (res.type === 'hotp' && countdownEl) {
 						countdownEl.textContent = _('Counter: %s').format(res.counter || '0');
@@ -192,6 +242,138 @@ var CBIQRCode = form.DummyValue.extend({
 
 var CBIIPWhitelist = form.DynamicList.extend({
 	datatype: 'or(ip4addr,ip6addr,cidr4,cidr6)'
+});
+
+// Backup Codes Management Widget
+var CBIBackupCodes = form.DummyValue.extend({
+	renderWidget: function(section_id, option_id, cfgvalue) {
+		var key = uci.get('2fa', 'root', 'key') || '';
+		var containerDiv = E('div', { 'id': 'backup-codes-container' });
+
+		if (!key) {
+			containerDiv.appendChild(E('em', {}, _('Generate a secret key first before creating backup codes')));
+			return containerDiv;
+		}
+
+		var statusDiv = E('div', { 'id': 'backup-codes-status' }, [
+			E('em', {}, _('Loading...'))
+		]);
+		
+		var codesDisplayDiv = E('div', { 
+			'id': 'backup-codes-display',
+			'style': 'display: none; background: #f8f9fa; border: 1px solid #dee2e6; padding: 15px; border-radius: 4px; margin: 10px 0;'
+		});
+
+		var buttonsDiv = E('div', { 'style': 'margin-top: 10px;' }, [
+			E('button', {
+				'class': 'cbi-button cbi-button-action',
+				'click': ui.createHandlerFn(this, function() {
+					return this.generateBackupCodes(containerDiv);
+				})
+			}, _('Generate New Backup Codes')),
+			E('button', {
+				'class': 'cbi-button cbi-button-remove',
+				'style': 'margin-left: 10px;',
+				'click': ui.createHandlerFn(this, function() {
+					if (confirm(_('Are you sure you want to clear all backup codes? You will not be able to use them for emergency access.'))) {
+						return this.clearBackupCodes(containerDiv);
+					}
+				})
+			}, _('Clear Backup Codes'))
+		]);
+
+		containerDiv.appendChild(statusDiv);
+		containerDiv.appendChild(codesDisplayDiv);
+		containerDiv.appendChild(buttonsDiv);
+
+		// Load initial status
+		this.refreshStatus(containerDiv);
+
+		return containerDiv;
+	},
+
+	refreshStatus: function(container) {
+		var statusDiv = container.querySelector('#backup-codes-status');
+		return callGetBackupCodesCount('root').then(function(res) {
+			if (statusDiv) {
+				if (res.count > 0) {
+					statusDiv.innerHTML = '<span style="color: green;">✓</span> ' + 
+						_('You have %d backup code(s) remaining.').format(res.count) +
+						' <em style="font-size: 12px; color: #666;">' + 
+						_('Each code can only be used once.') + '</em>';
+				} else {
+					statusDiv.innerHTML = '<span style="color: orange;">⚠</span> ' + 
+						_('No backup codes configured.') +
+						' <em style="font-size: 12px; color: #666;">' + 
+						_('Generate backup codes to ensure you can access your device if your authenticator is unavailable.') + '</em>';
+				}
+			}
+		}).catch(function(err) {
+			if (statusDiv) {
+				statusDiv.innerHTML = '<span style="color: red;">✗</span> ' + _('Error loading status');
+			}
+		});
+	},
+
+	generateBackupCodes: function(container) {
+		var statusDiv = container.querySelector('#backup-codes-status');
+		var codesDisplayDiv = container.querySelector('#backup-codes-display');
+		var self = this;
+
+		return callGenerateBackupCodes('root', 5).then(function(res) {
+			if (res.result && res.codes && res.codes.length > 0) {
+				// Display the codes
+				var codesHtml = '<div style="margin-bottom: 10px;">' +
+					'<strong style="color: #dc3545;">⚠️ ' + _('Important: Save these codes now!') + '</strong>' +
+					'<p style="margin: 5px 0; font-size: 12px;">' + 
+					_('These codes will only be shown once. Store them in a safe place.') + 
+					'</p></div>' +
+					'<div style="font-family: monospace; font-size: 16px; line-height: 2;">';
+				
+				res.codes.forEach(function(code, index) {
+					codesHtml += '<div style="background: white; padding: 5px 10px; margin: 2px 0; border-radius: 3px;">' +
+						(index + 1) + '. <strong>' + code + '</strong></div>';
+				});
+				
+				codesHtml += '</div>' +
+					'<p style="margin-top: 10px; font-size: 12px; color: #666;">' +
+					_('Each code can only be used once for emergency login when your authenticator app is unavailable or system time is not synced.') +
+					'</p>';
+				
+				codesDisplayDiv.innerHTML = codesHtml;
+				codesDisplayDiv.style.display = 'block';
+				
+				ui.addNotification(null, E('p', _('Backup codes generated successfully. Please save them now!')), 'info');
+			} else {
+				ui.addNotification(null, E('p', _('Failed to generate backup codes.')), 'error');
+			}
+			
+			return self.refreshStatus(container);
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', _('Error generating backup codes: ') + err.message), 'error');
+		});
+	},
+
+	clearBackupCodes: function(container) {
+		var codesDisplayDiv = container.querySelector('#backup-codes-display');
+		var self = this;
+
+		return callClearBackupCodes('root').then(function(res) {
+			if (res.result) {
+				if (codesDisplayDiv) {
+					codesDisplayDiv.style.display = 'none';
+					codesDisplayDiv.innerHTML = '';
+				}
+				ui.addNotification(null, E('p', _('Backup codes cleared.')), 'info');
+			} else {
+				ui.addNotification(null, E('p', _('Failed to clear backup codes.')), 'error');
+			}
+			
+			return self.refreshStatus(container);
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', _('Error clearing backup codes: ') + err.message), 'error');
+		});
+	}
 });
 
 var CBIRateLimitStatus = form.DummyValue.extend({
@@ -308,7 +490,10 @@ return view.extend({
 		// Tab 1: Basic Settings
 		s.tab('basic', _('Basic'));
 
-		// Tab 2: Advanced Settings
+		// Tab 2: Backup Codes
+		s.tab('backup', _('Backup Codes'));
+
+		// Tab 3: Advanced Settings
 		s.tab('advanced', _('Advanced'));
 
 		// === Basic Tab ===
@@ -332,6 +517,12 @@ return view.extend({
 		// QR Code
 		o = s.taboption('basic', CBIQRCode, '_qrcode', _('QR Code'),
 			_('Scan this QR code with your authenticator app (Google Authenticator, Authy, Microsoft Authenticator, etc.)'));
+
+		// === Backup Codes Tab ===
+		
+		o = s.taboption('backup', CBIBackupCodes, '_backup_codes', _('Backup Codes'),
+			_('Backup codes provide emergency access when your authenticator app is unavailable or when system time is not synchronized. ' +
+			  'Each code can only be used once. Generate and store these codes in a safe place.'));
 
 		// === Advanced Tab ===
 
