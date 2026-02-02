@@ -1,0 +1,51 @@
+Package: luci-app-2fa
+Version: 1.0.0-r1
+Depends: libc, luci-base
+Source: feeds/base/luci-app-2fa
+SourceName: luci-app-2fa
+License: Apache-2.0
+Section: luci
+SourceDateEpoch: 1758316778
+URL: https://github.com/openwrt/luci
+Maintainer: OpenWrt LuCI community
+Architecture: all
+Installed-Size: 51200
+Description:  LuCI 2-Factor Authentication
+Filename: luci-app-2fa_1.0.0-r1_all.ipk
+Size: 11802
+SHA256sum: ca52fca59e974e00178aaaa82e1bc190f0ebfd236860216921cf1cd40583455c
+
+Package: luci-app-2fa
+Version: 1.0.0-r1
+Depends: libc, luci-base
+Source: feeds/base/luci-app-2fa
+SourceName: luci-app-2fa
+License: Apache-2.0
+Section: luci
+SourceDateEpoch: 1758316778
+URL: https://github.com/openwrt/luci
+Maintainer: OpenWrt LuCI community
+Architecture: all
+Installed-Size: 51200
+Description:  LuCI 2-Factor Authentication
+Filename: luci-app-2fa_1.0.0-r1_all.ipk
+Size: 11802
+SHA256sum: ca52fca59e974e00178aaaa82e1bc190f0ebfd236860216921cf1cd40583455c
+
+Package: luci-app-2fa
+Version: 1.2.4-r1
+Depends: libc, luci-base
+Source: feeds/base/luci-app-2fa
+SourceName: luci-app-2fa
+License: Apache-2.0
+Section: luci
+SourceDateEpoch: 1758316778
+URL: https://github.com/tokisaki-galaxy/luci-app-2fa
+Maintainer: OpenWrt LuCI community
+Architecture: all
+Installed-Size: 102400
+Description:  LuCI 2-Factor Authentication
+Filename: luci-app-2fa_1.2.4-r1_all.ipk
+Size: 21672
+SHA256sum: 6769e005d7f1ee4b58a483fe197b734ed8ced04a318ee3c9018fa800b739c591
+
