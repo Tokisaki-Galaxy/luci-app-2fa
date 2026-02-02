@@ -28,37 +28,6 @@ function check_time_calibration() {
 	};
 }
 
-// Improved hash function for backup codes using multiple rounds and mixing
-// While not SHA-256, this provides better collision resistance than a simple hash
-// The backup code format (XXXX-XXXX, ~40 bits of entropy) limits attack surface
-// Combined with rate limiting, this provides reasonable security for this use case
-function backup_code_hash(str) {
-	// FNV-1a inspired hash with multiple rounds for better avalanche effect
-	let h1 = 0x811c9dc5;  // FNV offset basis
-	let h2 = 0x01000193;  // FNV prime
-	
-	// First round - FNV-1a style
-	for (let i = 0; i < length(str); i++) {
-		let c = ord(str, i);
-		h1 = h1 ^ c;
-		h1 = (h1 * 0x01000193) & 0xFFFFFFFF;
-	}
-	
-	// Second round - mix with position-dependent values
-	for (let i = 0; i < length(str); i++) {
-		let c = ord(str, i);
-		h2 = h2 ^ ((c << (i % 24)) | (c >> (32 - (i % 24))));
-		h2 = ((h2 << 5) + h2 + c) & 0xFFFFFFFF;
-	}
-	
-	// Mix the two hashes together
-	let final = (h1 ^ (h2 >> 16) ^ (h2 << 16)) & 0xFFFFFFFF;
-	final = final ^ (h1 >> 8);
-	
-	// Return 16-character hex string (64 bits) for better collision resistance
-	return sprintf('%08x%08x', h1 & 0xFFFFFFFF, (final ^ h2) & 0xFFFFFFFF);
-}
-
 // Constant-time string comparison to prevent timing attacks
 function constant_time_compare(a, b) {
 	if (length(a) != length(b))
@@ -69,50 +38,6 @@ function constant_time_compare(a, b) {
 		result = result | (ord(a, i) ^ ord(b, i));
 	}
 	return result == 0;
-}
-
-// Verify a backup code
-function verify_backup_code(username, code) {
-	let uci = require('uci');
-	let ctx = uci.cursor();
-	
-	// Normalize the code (remove dashes, uppercase)
-	code = replace(uc(code), '-', '');
-	// Re-add dash for hashing (stored format is XXXX-XXXX)
-	if (length(code) == 8) {
-		code = substr(code, 0, 4) + '-' + substr(code, 4, 4);
-	}
-	
-	let code_hash = backup_code_hash(code);
-	
-	// Get stored backup codes
-	let user_config = ctx.get_all('2fa', username);
-	if (!user_config || !user_config.backup_codes) {
-		return { valid: false, consumed: false };
-	}
-	
-	let stored_codes = user_config.backup_codes;
-	if (type(stored_codes) == 'string') {
-		stored_codes = [stored_codes];
-	}
-	
-	// Check if the code matches any stored hash
-	for (let i = 0; i < length(stored_codes); i++) {
-		let stored_hash = stored_codes[i];
-		if (stored_hash && stored_hash != '' && constant_time_compare(stored_hash, code_hash)) {
-			// Code is valid - remove it (one-time use)
-			ctx.delete('2fa', username, 'backup_codes');
-			for (let j = 0; j < length(stored_codes); j++) {
-				if (j != i && stored_codes[j] && stored_codes[j] != '') {
-					ctx.list_append('2fa', username, 'backup_codes', stored_codes[j]);
-				}
-			}
-			ctx.commit('2fa');
-			return { valid: true, consumed: true };
-		}
-	}
-	
-	return { valid: false, consumed: false };
 }
 
 // Sanitize username to prevent command injection
@@ -221,6 +146,27 @@ function is_ip_whitelisted(ip) {
 				return true;
 		}
 	}
+	
+	return false;
+}
+
+// Check if IP is in local subnet (192.168.0.0/16 or 10.0.0.0/8)
+// Used for strict mode when system time is not calibrated
+function is_local_subnet(ip) {
+	if (!ip || ip == '')
+		return false;
+	
+	// Only check IPv4 addresses
+	if (!match(ip, /^(\d{1,3}\.){3}\d{1,3}$/))
+		return false;
+	
+	// Check 192.168.0.0/16 (192.168.x.x)
+	if (ip_in_cidr(ip, '192.168.0.0/16'))
+		return true;
+	
+	// Check 10.0.0.0/8 (10.x.x.x)
+	if (ip_in_cidr(ip, '10.0.0.0/8'))
+		return true;
 	
 	return false;
 }
@@ -352,8 +298,8 @@ function is_2fa_enabled(username) {
 	return true;
 }
 
-// Verify OTP for user (also supports backup codes)
-// Returns: { success: bool, backup_code_used: bool }
+// Verify OTP for user
+// Returns: { success: bool }
 function verify_otp(username, otp) {
 	let fs = require('fs');
 	let uci = require('uci');
@@ -368,14 +314,6 @@ function verify_otp(username, otp) {
 
 	// Trim and normalize input
 	otp = trim(otp);
-	
-	// Check if this is a backup code (format: XXXX-XXXX or XXXXXXXX with letters/numbers)
-	if (match(otp, /^[A-Za-z0-9]{4}-?[A-Za-z0-9]{4}$/)) {
-		let backup_result = verify_backup_code(safe_username, otp);
-		if (backup_result.valid) {
-			return { success: true, backup_code_used: true };
-		}
-	}
 	
 	// Validate OTP format: must be exactly 6 digits
 	if (!match(otp, /^[0-9]{6}$/))
@@ -514,7 +452,6 @@ return {
 		}
 
 		// Check time calibration for TOTP
-		// When time is uncalibrated, completely disable 2FA to prevent lockout
 		let uci = require('uci');
 		let ctx = uci.cursor();
 		let safe_username = sanitize_username(user);
@@ -523,9 +460,27 @@ return {
 		if (otp_type == 'totp') {
 			let time_check = check_time_calibration();
 			if (!time_check.calibrated) {
-				// Time not calibrated - skip 2FA completely to prevent lockout
-				// Note: time_not_calibrated flag useful for logging/debugging
-				return { required: false, time_not_calibrated: true };
+				// Time not calibrated - check strict mode setting
+				let strict_mode = ctx.get('2fa', 'settings', 'strict_mode');
+				
+				if (strict_mode == '1') {
+					// Strict mode enabled: block non-local subnets, bypass 2FA for local subnets
+					if (client_ip && is_local_subnet(client_ip)) {
+						// Local subnet (192.168.0.0/16 or 10.0.0.0/8) - bypass 2FA
+						return { required: false, time_not_calibrated: true, local_subnet_bypass: true };
+					} else {
+						// Not local subnet - block login completely
+						return {
+							required: true,
+							blocked: true,
+							message: 'System time is not calibrated (before 2026). Login is blocked for security. Please access from local network (192.168.x.x or 10.x.x.x) or sync system time.',
+							fields: []
+						};
+					}
+				} else {
+					// Non-strict mode: skip 2FA completely to prevent lockout (same as before)
+					return { required: false, time_not_calibrated: true };
+				}
 			}
 		}
 
@@ -535,16 +490,16 @@ return {
 				{
 					name: 'luci_otp',
 					type: 'text',
-					label: 'One-Time Password or Backup Code',
-					placeholder: '123456 or XXXX-XXXX',
+					label: 'One-Time Password',
+					placeholder: '123456',
 					inputmode: 'numeric',
-					pattern: '[0-9A-Za-z-]*',
-					maxlength: 9,
+					pattern: '[0-9]*',
+					maxlength: 6,
 					autocomplete: 'one-time-code',
 					required: true
 				}
 			],
-			message: 'Please enter your one-time password from your authenticator app, or a backup code.'
+			message: 'Please enter your one-time password from your authenticator app.'
 		};
 	},
 
@@ -588,7 +543,7 @@ return {
 			if (client_ip) record_failed_attempt(client_ip);
 			return {
 				success: false,
-				message: 'Please enter your one-time password or backup code.'
+				message: 'Please enter your one-time password.'
 			};
 		}
 
@@ -599,16 +554,13 @@ return {
 			
 			return {
 				success: false,
-				message: 'Invalid one-time password or backup code. Please try again.'
+				message: 'Invalid one-time password. Please try again.'
 			};
 		}
 
 		// Clear rate limit on successful login
 		if (client_ip) clear_rate_limit(client_ip);
 		
-		return { 
-			success: true,
-			backup_code_used: verify_result.backup_code_used || false
-		};
+		return { success: true };
 	}
 };

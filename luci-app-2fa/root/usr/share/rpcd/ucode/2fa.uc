@@ -13,19 +13,6 @@ const RATE_LIMIT_FILE = '/tmp/2fa_rate_limit.json';
 // when system time appears uncalibrated.
 const DEFAULT_MIN_VALID_TIME = 1767225600;
 
-// Constant-time string comparison to prevent timing attacks
-// NOTE: This function must be defined before verify_backup_code which uses it
-function constant_time_compare(a, b) {
-	if (length(a) != length(b))
-		return false;
-
-	let result = 0;
-	for (let i = 0; i < length(a); i++) {
-		result = result | (ord(a, i) ^ ord(b, i));
-	}
-	return result == 0;
-}
-
 // Check if system time is calibrated (not earlier than minimum valid time)
 // Returns: { calibrated: bool, current_time: int, min_valid_time: int }
 function check_time_calibration() {
@@ -41,131 +28,16 @@ function check_time_calibration() {
 	};
 }
 
-// Improved hash function for backup codes using multiple rounds and mixing
-// While not SHA-256, this provides better collision resistance than a simple hash
-// The backup code format (XXXX-XXXX, ~40 bits of entropy) limits attack surface
-// Combined with rate limiting, this provides reasonable security for this use case
-function backup_code_hash(str) {
-	// FNV-1a inspired hash with multiple rounds for better avalanche effect
-	let h1 = 0x811c9dc5;  // FNV offset basis
-	let h2 = 0x01000193;  // FNV prime
-	
-	// First round - FNV-1a style
-	for (let i = 0; i < length(str); i++) {
-		let c = ord(str, i);
-		h1 = h1 ^ c;
-		h1 = (h1 * 0x01000193) & 0xFFFFFFFF;
-	}
-	
-	// Second round - mix with position-dependent values
-	for (let i = 0; i < length(str); i++) {
-		let c = ord(str, i);
-		h2 = h2 ^ ((c << (i % 24)) | (c >> (32 - (i % 24))));
-		h2 = ((h2 << 5) + h2 + c) & 0xFFFFFFFF;
-	}
-	
-	// Mix the two hashes together
-	let final = (h1 ^ (h2 >> 16) ^ (h2 << 16)) & 0xFFFFFFFF;
-	final = final ^ (h1 >> 8);
-	
-	// Return 16-character hex string (64 bits) for better collision resistance
-	return sprintf('%08x%08x', h1 & 0xFFFFFFFF, (final ^ h2) & 0xFFFFFFFF);
-}
+// Constant-time string comparison to prevent timing attacks
+function constant_time_compare(a, b) {
+	if (length(a) != length(b))
+		return false;
 
-// Generate backup security codes
-// Returns array of { code: 'plaintext', hash: 'hashed' }
-function generate_backup_codes(count) {
-	if (!count || count < 1) count = 5;
-	if (count > 10) count = 10;
-	
-	let codes = [];
-	let chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';  // Exclude confusing chars: 0,O,I,1
-	
-	// Read random bytes from /dev/urandom
-	let fd = open('/dev/urandom', 'r');
-	if (fd) {
-		let data = fd.read(count * 16);
-		fd.close();
-		
-		for (let i = 0; i < count; i++) {
-			let code = '';
-			// Generate 8-character code in format XXXX-XXXX
-			for (let j = 0; j < 8; j++) {
-				let idx = i * 16 + j;
-				if (idx < length(data)) {
-					let num = ord(data, idx);
-					code = code + substr(chars, num % 32, 1);
-				}
-			}
-			// Format as XXXX-XXXX for readability
-			code = substr(code, 0, 4) + '-' + substr(code, 4, 4);
-			push(codes, {
-				code: code,
-				hash: backup_code_hash(code)
-			});
-		}
+	let result = 0;
+	for (let i = 0; i < length(a); i++) {
+		result = result | (ord(a, i) ^ ord(b, i));
 	}
-	
-	// Fallback if /dev/urandom fails
-	let fallbackSeed = time();
-	while (length(codes) < count) {
-		let code = '';
-		for (let j = 0; j < 8; j++) {
-			fallbackSeed = (fallbackSeed * 1103515245 + 12345) % 2147483648;
-			code = code + substr(chars, fallbackSeed % 32, 1);
-		}
-		code = substr(code, 0, 4) + '-' + substr(code, 4, 4);
-		push(codes, {
-			code: code,
-			hash: backup_code_hash(code)
-		});
-	}
-	
-	return codes;
-}
-
-// Verify a backup code
-// Returns: { valid: bool, consumed: bool }
-function verify_backup_code(username, code) {
-	let ctx = cursor();
-	
-	// Normalize the code (remove dashes, uppercase)
-	code = replace(uc(code), '-', '');
-	// Re-add dash for hashing (stored format is XXXX-XXXX)
-	if (length(code) == 8) {
-		code = substr(code, 0, 4) + '-' + substr(code, 4, 4);
-	}
-	
-	let code_hash = backup_code_hash(code);
-	
-	// Get stored backup codes
-	let user_config = ctx.get_all('2fa', username);
-	if (!user_config || !user_config.backup_codes) {
-		return { valid: false, consumed: false };
-	}
-	
-	let stored_codes = user_config.backup_codes;
-	if (type(stored_codes) == 'string') {
-		stored_codes = [stored_codes];
-	}
-	
-	// Check if the code matches any stored hash
-	for (let i = 0; i < length(stored_codes); i++) {
-		let stored_hash = stored_codes[i];
-		if (stored_hash && stored_hash != '' && constant_time_compare(stored_hash, code_hash)) {
-			// Code is valid - remove it (one-time use)
-			ctx.delete('2fa', username, 'backup_codes');
-			for (let j = 0; j < length(stored_codes); j++) {
-				if (j != i && stored_codes[j] && stored_codes[j] != '') {
-					ctx.list_append('2fa', username, 'backup_codes', stored_codes[j]);
-				}
-			}
-			ctx.commit('2fa');
-			return { valid: true, consumed: true };
-		}
-	}
-	
-	return { valid: false, consumed: false };
+	return result == 0;
 }
 
 // Sanitize username to prevent command injection
@@ -278,6 +150,27 @@ function is_ip_whitelisted(ip) {
 				return true;
 		}
 	}
+	
+	return false;
+}
+
+// Check if IP is in local subnet (192.168.0.0/16 or 10.0.0.0/8)
+// Used for strict mode when system time is not calibrated
+function is_local_subnet(ip) {
+	if (!ip || ip == '')
+		return false;
+	
+	// Only check IPv4 addresses
+	if (!match(ip, /^(\d{1,3}\.){3}\d{1,3}$/))
+		return false;
+	
+	// Check 192.168.0.0/16 (192.168.x.x)
+	if (ip_in_cidr(ip, '192.168.0.0/16'))
+		return true;
+	
+	// Check 10.0.0.0/8 (10.x.x.x)
+	if (ip_in_cidr(ip, '10.0.0.0/8'))
+		return true;
 	
 	return false;
 }
@@ -441,21 +334,43 @@ const methods = {
 			}
 
 			// Check system time calibration for TOTP
-			// When time is uncalibrated, completely disable 2FA for safety
-			// (users can still log in with just username/password)
 			let otp_type = ctx.get('2fa', safe_username, 'type') || 'totp';
 			if (otp_type == 'totp') {
 				let time_check = check_time_calibration();
 				if (!time_check.calibrated) {
-					// Time not calibrated - disable 2FA completely to prevent lockout
-					// Note: time_not_calibrated flag allows UI to show informative message
-					// about why 2FA is disabled (useful for settings page warning)
-					return { 
-						enabled: false, 
-						time_not_calibrated: true,
-						current_time: time_check.current_time,
-						min_valid_time: time_check.min_valid_time
-					};
+					// Time not calibrated - check strict mode setting
+					let strict_mode = ctx.get('2fa', 'settings', 'strict_mode');
+					
+					if (strict_mode == '1') {
+						// Strict mode enabled: block non-local subnets, bypass 2FA for local subnets
+						if (client_ip && is_local_subnet(client_ip)) {
+							// Local subnet (192.168.0.0/16 or 10.0.0.0/8) - bypass 2FA
+							return { 
+								enabled: false, 
+								time_not_calibrated: true,
+								local_subnet_bypass: true,
+								current_time: time_check.current_time,
+								min_valid_time: time_check.min_valid_time
+							};
+						} else {
+							// Not local subnet - block login (2FA required but will fail)
+							return { 
+								enabled: true,
+								blocked: true,
+								time_not_calibrated: true,
+								current_time: time_check.current_time,
+								min_valid_time: time_check.min_valid_time
+							};
+						}
+					} else {
+						// Non-strict mode: disable 2FA completely to prevent lockout
+						return { 
+							enabled: false, 
+							time_not_calibrated: true,
+							current_time: time_check.current_time,
+							min_valid_time: time_check.min_valid_time
+						};
+					}
 				}
 			}
 
@@ -477,12 +392,11 @@ const methods = {
 	},
 
 	verifyOTP: {
-		args: { otp: '', username: '', client_ip: '', is_backup_code: false },
+		args: { otp: '', username: '', client_ip: '' },
 		call: function(request) {
 			let otp = request.args.otp;
 			let username = request.args.username || 'root';
 			let client_ip = request.args.client_ip || '';
-			let is_backup_code = request.args.is_backup_code || false;
 			let ctx = cursor();
 
 			// Sanitize username to prevent command injection
@@ -526,20 +440,10 @@ const methods = {
 			// Trim and normalize input
 			otp = trim(otp);
 			
-			// Check if this is a backup code (format: XXXX-XXXX or XXXXXXXX)
-			// Backup codes always work regardless of time calibration
-			if (is_backup_code || match(otp, /^[A-Za-z0-9]{4}-?[A-Za-z0-9]{4}$/)) {
-				let backup_result = verify_backup_code(safe_username, otp);
-				if (backup_result.valid) {
-					// Clear rate limit on successful login
-					if (client_ip) clear_rate_limit(client_ip);
-					return { result: true, backup_code_used: true };
-				}
-				// If explicitly marked as backup code, don't try OTP
-				if (is_backup_code) {
-					if (client_ip) record_failed_attempt(client_ip);
-					return { result: false, invalid_backup_code: true };
-				}
+			// Validate OTP format: must be exactly 6 digits
+			if (!match(otp, /^[0-9]{6}$/)) {
+				if (client_ip) record_failed_attempt(client_ip);
+				return { result: false };
 			}
 			
 			// Get OTP type to determine verification strategy
@@ -629,7 +533,8 @@ const methods = {
 				rate_limit_enabled: ctx.get('2fa', 'settings', 'rate_limit_enabled') || '0',
 				rate_limit_max_attempts: ctx.get('2fa', 'settings', 'rate_limit_max_attempts') || '5',
 				rate_limit_window: ctx.get('2fa', 'settings', 'rate_limit_window') || '60',
-				rate_limit_lockout: ctx.get('2fa', 'settings', 'rate_limit_lockout') || '300'
+				rate_limit_lockout: ctx.get('2fa', 'settings', 'rate_limit_lockout') || '300',
+				strict_mode: ctx.get('2fa', 'settings', 'strict_mode') || '0'
 			};
 		}
 	},
@@ -646,7 +551,8 @@ const methods = {
 			rate_limit_enabled: '',
 			rate_limit_max_attempts: '',
 			rate_limit_window: '',
-			rate_limit_lockout: ''
+			rate_limit_lockout: '',
+			strict_mode: ''
 		},
 		call: function(request) {
 			let ctx = cursor();
@@ -730,6 +636,12 @@ const methods = {
 				let val = int(args.rate_limit_lockout);
 				if (val > 0 && val <= 86400)
 					ctx.set('2fa', 'settings', 'rate_limit_lockout', '' + val);
+			}
+
+			// Strict mode
+			if (args.strict_mode != null && args.strict_mode != '') {
+				if (args.strict_mode == '1' || args.strict_mode == '0')
+					ctx.set('2fa', 'settings', 'strict_mode', args.strict_mode);
 			}
 
 			ctx.commit('2fa');
@@ -869,98 +781,6 @@ const methods = {
 		args: {},
 		call: function(request) {
 			return check_time_calibration();
-		}
-	},
-
-	// Generate new backup codes for a user
-	generateBackupCodes: {
-		args: { username: '', count: 5 },
-		call: function(request) {
-			let username = request.args.username || 'root';
-			let count = int(request.args.count) || 5;
-			let ctx = cursor();
-
-			// Sanitize username
-			let safe_username = sanitize_username(username);
-			if (!safe_username) {
-				return { result: false, error: 'Invalid username' };
-			}
-
-			// Generate new backup codes
-			let codes = generate_backup_codes(count);
-			
-			// Store only the hashes
-			ctx.delete('2fa', safe_username, 'backup_codes');
-			for (let code_obj in codes) {
-				ctx.list_append('2fa', safe_username, 'backup_codes', code_obj.hash);
-			}
-			ctx.commit('2fa');
-
-			// Return plaintext codes to user (only time they will see them)
-			let plaintext_codes = [];
-			for (let code_obj in codes) {
-				push(plaintext_codes, code_obj.code);
-			}
-
-			return { 
-				result: true, 
-				codes: plaintext_codes,
-				message: 'Save these backup codes in a safe place. Each code can only be used once.'
-			};
-		}
-	},
-
-	// Get backup codes count (not the codes themselves)
-	getBackupCodesCount: {
-		args: { username: '' },
-		call: function(request) {
-			let username = request.args.username || 'root';
-			let ctx = cursor();
-
-			// Sanitize username
-			let safe_username = sanitize_username(username);
-			if (!safe_username) {
-				return { count: 0 };
-			}
-
-			// Get stored backup codes
-			let user_config = ctx.get_all('2fa', safe_username);
-			if (!user_config || !user_config.backup_codes) {
-				return { count: 0 };
-			}
-
-			let stored_codes = user_config.backup_codes;
-			if (type(stored_codes) == 'string') {
-				return { count: (stored_codes && stored_codes != '') ? 1 : 0 };
-			}
-
-			// Filter out empty entries
-			let valid_count = 0;
-			for (let code in stored_codes) {
-				if (code && code != '') valid_count++;
-			}
-
-			return { count: valid_count };
-		}
-	},
-
-	// Clear all backup codes for a user
-	clearBackupCodes: {
-		args: { username: '' },
-		call: function(request) {
-			let username = request.args.username || 'root';
-			let ctx = cursor();
-
-			// Sanitize username
-			let safe_username = sanitize_username(username);
-			if (!safe_username) {
-				return { result: false, error: 'Invalid username' };
-			}
-
-			ctx.delete('2fa', safe_username, 'backup_codes');
-			ctx.commit('2fa');
-
-			return { result: true };
 		}
 	}
 };
