@@ -180,6 +180,7 @@ var CBIRateLimitStatus = form.DummyValue.extend({
 			]);
 			
 			result.entries.forEach(function(entry) {
+				// Backend returns Unix timestamp in seconds, convert to milliseconds for JavaScript Date
 				var status = entry.locked ? 
 					_('Locked until ') + new Date(entry.locked_until * 1000).toLocaleString() :
 					_('Active');

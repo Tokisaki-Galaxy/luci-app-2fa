@@ -1,7 +1,6 @@
 config settings 'settings'
 	option enabled '0'
 	option ip_whitelist_enabled '0'
-	list ip_whitelist ''
 	option rate_limit_enabled '0'
 	option rate_limit_max_attempts '5'
 	option rate_limit_window '60'

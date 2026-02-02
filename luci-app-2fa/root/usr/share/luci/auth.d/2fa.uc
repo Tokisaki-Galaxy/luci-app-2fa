@@ -26,34 +26,53 @@ function sanitize_username(username) {
 }
 
 // Validate IP address (IPv4 or IPv6)
+// Note: IPv6 validation is simplified - it accepts basic IPv6 formats but may allow some invalid addresses.
 function is_valid_ip(ip) {
 	if (!ip || ip == '')
 		return false;
-	// IPv4 pattern
-	if (match(ip, /^(\d{1,3}\.){3}\d{1,3}$/))
+	// IPv4 pattern - validate each octet is 0-255
+	if (match(ip, /^(\d{1,3}\.){3}\d{1,3}$/)) {
+		let parts = split(ip, '.');
+		for (let i = 0; i < length(parts); i++) {
+			if (int(parts[i]) > 255) return false;
+		}
 		return true;
+	}
 	// IPv4 CIDR pattern
-	if (match(ip, /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/))
+	if (match(ip, /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/)) {
+		let cidr_parts = split(ip, '/');
+		let prefix = int(cidr_parts[1]);
+		if (prefix < 0 || prefix > 32) return false;
+		let ip_parts = split(cidr_parts[0], '.');
+		for (let i = 0; i < length(ip_parts); i++) {
+			if (int(ip_parts[i]) > 255) return false;
+		}
 		return true;
-	// IPv6 pattern (simplified)
-	if (match(ip, /^[0-9a-fA-F:]+$/))
+	}
+	// IPv6 pattern (simplified - basic validation)
+	if (match(ip, /^[0-9a-fA-F:]+$/) && index(ip, ':') >= 0)
 		return true;
 	// IPv6 CIDR pattern
-	if (match(ip, /^[0-9a-fA-F:]+\/\d{1,3}$/))
+	if (match(ip, /^[0-9a-fA-F:]+\/\d{1,3}$/) && index(ip, ':') >= 0) {
+		let cidr_parts = split(ip, '/');
+		let prefix = int(cidr_parts[1]);
+		if (prefix < 0 || prefix > 128) return false;
 		return true;
+	}
 	return false;
 }
 
 // Check if an IP is in a CIDR range
+// Note: For IPv6, CIDR matching falls back to exact string comparison.
 function ip_in_cidr(ip, cidr) {
 	// Split CIDR into IP and prefix
 	let parts = split(cidr, '/');
 	let network_ip = parts[0];
 	let prefix = (length(parts) > 1) ? int(parts[1]) : 32;
 	
-	// Convert IPs to integers for comparison (IPv4 only)
+	// For IPv6, fall back to exact string comparison (limited support)
 	if (!match(ip, /^(\d{1,3}\.){3}\d{1,3}$/))
-		return ip == network_ip;  // For IPv6, just do simple comparison
+		return ip == network_ip;
 	
 	if (!match(network_ip, /^(\d{1,3}\.){3}\d{1,3}$/))
 		return false;
@@ -318,22 +337,27 @@ function verify_otp(username, otp) {
 }
 
 // Get client IP from HTTP request
+// SECURITY NOTE: X-Forwarded-For header can be spoofed by clients.
+// This is acceptable for rate limiting (worst case: attacker can only bypass their own rate limit)
+// but should not be used for security-critical IP-based authorization.
+// For trusted proxy setups, consider implementing a trusted proxy IP list in the future.
 function get_client_ip(http) {
 	// Try to get client IP from various sources
 	let ip = null;
 	
-	// Try X-Forwarded-For header first (for reverse proxy setups)
 	if (http && http.getenv) {
-		ip = http.getenv('HTTP_X_FORWARDED_FOR');
-		if (ip) {
-			// X-Forwarded-For may contain multiple IPs, get the first one
-			let parts = split(ip, ',');
-			ip = trim(parts[0]);
-		}
+		// Prefer REMOTE_ADDR as it's more reliable (cannot be spoofed without proxy)
+		ip = http.getenv('REMOTE_ADDR');
 		
-		// Fall back to REMOTE_ADDR
-		if (!ip || ip == '') {
-			ip = http.getenv('REMOTE_ADDR');
+		// Only use X-Forwarded-For if REMOTE_ADDR is a loopback/local address
+		// This provides basic protection against header spoofing
+		if (ip && (ip == '127.0.0.1' || ip == '::1')) {
+			let xff = http.getenv('HTTP_X_FORWARDED_FOR');
+			if (xff) {
+				// X-Forwarded-For may contain multiple IPs, get the first one
+				let parts = split(xff, ',');
+				ip = trim(parts[0]);
+			}
 		}
 	}
 	

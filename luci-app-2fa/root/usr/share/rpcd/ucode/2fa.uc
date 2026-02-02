@@ -30,47 +30,57 @@ function sanitize_username(username) {
 }
 
 // Validate IP address (IPv4 or IPv6)
+// Note: IPv6 validation is simplified - it accepts basic IPv6 formats but may allow some invalid addresses.
+// For strict validation, consider using a more comprehensive regex or a dedicated library.
 function is_valid_ip(ip) {
 	if (!ip || ip == '')
 		return false;
-	// IPv4 pattern
+	// IPv4 pattern - validate each octet is 0-255
 	if (match(ip, /^(\d{1,3}\.){3}\d{1,3}$/)) {
 		let parts = split(ip, '.');
-		for (let p in parts) {
-			if (int(p) > 255) return false;
+		for (let i = 0; i < length(parts); i++) {
+			if (int(parts[i]) > 255) return false;
 		}
 		return true;
 	}
 	// IPv4 CIDR pattern
 	if (match(ip, /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/)) {
-		let parts = split(ip, '/');
-		let prefix = int(parts[1]);
+		let cidr_parts = split(ip, '/');
+		let prefix = int(cidr_parts[1]);
 		if (prefix < 0 || prefix > 32) return false;
-		let ip_parts = split(parts[0], '.');
-		for (let p in ip_parts) {
-			if (int(p) > 255) return false;
+		let ip_parts = split(cidr_parts[0], '.');
+		for (let i = 0; i < length(ip_parts); i++) {
+			if (int(ip_parts[i]) > 255) return false;
 		}
 		return true;
 	}
-	// IPv6 pattern (simplified)
-	if (match(ip, /^[0-9a-fA-F:]+$/))
+	// IPv6 pattern (simplified - basic validation)
+	// Accept addresses with colons and hex digits, ensure at least one colon
+	if (match(ip, /^[0-9a-fA-F:]+$/) && index(ip, ':') >= 0)
 		return true;
 	// IPv6 CIDR pattern
-	if (match(ip, /^[0-9a-fA-F:]+\/\d{1,3}$/))
+	if (match(ip, /^[0-9a-fA-F:]+\/\d{1,3}$/) && index(ip, ':') >= 0) {
+		let cidr_parts = split(ip, '/');
+		let prefix = int(cidr_parts[1]);
+		if (prefix < 0 || prefix > 128) return false;
 		return true;
+	}
 	return false;
 }
 
 // Check if an IP is in a CIDR range
+// Note: For IPv6, CIDR matching falls back to exact string comparison.
+// Full IPv6 CIDR support would require more complex bit manipulation.
 function ip_in_cidr(ip, cidr) {
 	// Split CIDR into IP and prefix
 	let parts = split(cidr, '/');
 	let network_ip = parts[0];
 	let prefix = (length(parts) > 1) ? int(parts[1]) : 32;
 	
-	// Convert IPs to integers for comparison (IPv4 only)
+	// For IPv6, fall back to simple string prefix comparison (limited support)
+	// Full IPv6 CIDR matching requires 128-bit arithmetic which is complex in ucode
 	if (!match(ip, /^(\d{1,3}\.){3}\d{1,3}$/))
-		return ip == network_ip;  // For IPv6, just do simple comparison
+		return ip == network_ip;  // For IPv6, exact match only
 	
 	if (!match(network_ip, /^(\d{1,3}\.){3}\d{1,3}$/))
 		return false;
@@ -449,7 +459,7 @@ const methods = {
 			step: '',
 			counter: '',
 			ip_whitelist_enabled: '',
-			ip_whitelist: null,
+			ip_whitelist: [],
 			rate_limit_enabled: '',
 			rate_limit_max_attempts: '',
 			rate_limit_window: '',
@@ -498,7 +508,7 @@ const methods = {
 			}
 
 			// IP whitelist
-			if (args.ip_whitelist != null) {
+			if (args.ip_whitelist != null && length(args.ip_whitelist) > 0) {
 				// First delete all existing entries
 				ctx.delete('2fa', 'settings', 'ip_whitelist');
 				
@@ -510,7 +520,7 @@ const methods = {
 				
 				for (let ip in whitelist) {
 					if (ip && ip != '' && is_valid_ip(ip)) {
-						ctx.add_list('2fa', 'settings', 'ip_whitelist', ip);
+						ctx.list_append('2fa', 'settings', 'ip_whitelist', ip);
 					}
 				}
 			}
