@@ -313,7 +313,9 @@ return view.extend({
 
 		// === Basic Tab ===
 
-		// Enable 2FA toggle (read from settings section but displayed here for UX)
+		// Enable 2FA toggle
+		// Note: This option reads/writes to 'settings' UCI section but is displayed
+		// in the OTP section for better UX. The ucisection override handles this.
 		o = s.taboption('basic', form.Flag, 'enabled', _('Enable 2FA'),
 			_('Enable two-factor authentication for LuCI login. You must configure a secret key before enabling.'));
 		o.rmempty = false;
@@ -341,8 +343,10 @@ return view.extend({
 		o.default = 'totp';
 
 		// Time Step (TOTP)
+		// Note: Most authenticator apps use 30 seconds. Some may support 15-60 seconds.
+		// Values outside this range may not be compatible with common authenticator apps.
 		o = s.taboption('advanced', form.Value, 'step', _('Time Step (seconds)'),
-			_('Time interval for TOTP code generation. Default is 30 seconds. Only change this if your authenticator app uses a different interval.'));
+			_('Time interval for TOTP code generation. Default is 30 seconds. Most authenticator apps only support 30 seconds.'));
 		o.depends('type', 'totp');
 		o.default = '30';
 		o.datatype = 'range(15,60)';
@@ -387,7 +391,7 @@ return view.extend({
 		o.cfgvalue = function() {
 			return '<div style="color: #666; font-size: 12px;">' +
 				'<strong>' + _('Single IP:') + '</strong> 192.168.1.100<br>' +
-				'<strong>' + _('Subnet:') + '</strong> 192.168.1.0/24 (' + _('all IPs from .1 to .254') + ')<br>' +
+				'<strong>' + _('Subnet:') + '</strong> 192.168.1.0/24 (' + _('covers 192.168.1.0-255, usable hosts .1-.254') + ')<br>' +
 				'<strong>' + _('Larger network:') + '</strong> 10.0.0.0/8<br>' +
 				'<strong>' + _('IPv6:') + '</strong> fd00::/8' +
 				'</div>';
