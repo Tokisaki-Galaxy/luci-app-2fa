@@ -17,7 +17,8 @@ const DEFAULT_MIN_VALID_TIME = 1767225600;
 function check_time_calibration() {
 	let uci = require('uci');
 	let ctx = uci.cursor();
-	let min_valid_time = int(ctx.get('2fa', 'settings', 'min_valid_time') || '' + DEFAULT_MIN_VALID_TIME);
+	let config_time = ctx.get('2fa', 'settings', 'min_valid_time');
+	let min_valid_time = config_time ? int(config_time) : DEFAULT_MIN_VALID_TIME;
 	let current_time = time();
 	
 	return {
@@ -27,15 +28,35 @@ function check_time_calibration() {
 	};
 }
 
-// Generate a simple hash for backup code verification
-function simple_hash(str) {
-	let hash = 0;
+// Improved hash function for backup codes using multiple rounds and mixing
+// While not SHA-256, this provides better collision resistance than a simple hash
+// The backup code format (XXXX-XXXX, ~40 bits of entropy) limits attack surface
+// Combined with rate limiting, this provides reasonable security for this use case
+function backup_code_hash(str) {
+	// FNV-1a inspired hash with multiple rounds for better avalanche effect
+	let h1 = 0x811c9dc5;  // FNV offset basis
+	let h2 = 0x01000193;  // FNV prime
+	
+	// First round - FNV-1a style
 	for (let i = 0; i < length(str); i++) {
 		let c = ord(str, i);
-		hash = ((hash << 5) - hash + c) & 0xFFFFFFFF;
-		hash = hash ^ (hash >> 16);
+		h1 = h1 ^ c;
+		h1 = (h1 * 0x01000193) & 0xFFFFFFFF;
 	}
-	return sprintf('%08x', hash & 0xFFFFFFFF);
+	
+	// Second round - mix with position-dependent values
+	for (let i = 0; i < length(str); i++) {
+		let c = ord(str, i);
+		h2 = h2 ^ ((c << (i % 24)) | (c >> (32 - (i % 24))));
+		h2 = ((h2 << 5) + h2 + c) & 0xFFFFFFFF;
+	}
+	
+	// Mix the two hashes together
+	let final = (h1 ^ (h2 >> 16) ^ (h2 << 16)) & 0xFFFFFFFF;
+	final = final ^ (h1 >> 8);
+	
+	// Return 16-character hex string (64 bits) for better collision resistance
+	return sprintf('%08x%08x', h1 & 0xFFFFFFFF, (final ^ h2) & 0xFFFFFFFF);
 }
 
 // Constant-time string comparison to prevent timing attacks
@@ -62,7 +83,7 @@ function verify_backup_code(username, code) {
 		code = substr(code, 0, 4) + '-' + substr(code, 4, 4);
 	}
 	
-	let code_hash = simple_hash(code);
+	let code_hash = backup_code_hash(code);
 	
 	// Get stored backup codes
 	let user_config = ctx.get_all('2fa', username);
