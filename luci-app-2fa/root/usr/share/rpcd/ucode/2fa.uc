@@ -16,6 +16,19 @@ const RATE_LIMIT_FILE = '/tmp/2fa_rate_limit.json';
 // when system time appears uncalibrated.
 const DEFAULT_MIN_VALID_TIME = 1767225600;
 
+// Constant-time string comparison to prevent timing attacks
+// NOTE: This function must be defined before verify_backup_code which uses it
+function constant_time_compare(a, b) {
+	if (length(a) != length(b))
+		return false;
+
+	let result = 0;
+	for (let i = 0; i < length(a); i++) {
+		result = result | (ord(a, i) ^ ord(b, i));
+	}
+	return result == 0;
+}
+
 // Check if system time is calibrated (not earlier than minimum valid time)
 // Returns: { calibrated: bool, current_time: int, min_valid_time: int }
 function check_time_calibration() {
@@ -156,18 +169,6 @@ function verify_backup_code(username, code) {
 	}
 	
 	return { valid: false, consumed: false };
-}
-
-// Constant-time string comparison to prevent timing attacks
-function constant_time_compare(a, b) {
-	if (length(a) != length(b))
-		return false;
-
-	let result = 0;
-	for (let i = 0; i < length(a); i++) {
-		result = result | (ord(a, i) ^ ord(b, i));
-	}
-	return result == 0;
 }
 
 // Sanitize username to prevent command injection
