@@ -619,7 +619,7 @@ const methods = {
 			let username = request.args.username || 'root';
 			let ctx = cursor();
 
-			// Sanitize username
+			// Sanitize username - only alphanumeric, underscore, dash, dot allowed
 			let safe_username = sanitize_username(username);
 			if (!safe_username) {
 				return { code: '', error: 'Invalid username' };
@@ -636,7 +636,8 @@ const methods = {
 
 			if (otp_type == 'hotp') {
 				// For HOTP, we show the next code without incrementing
-				let fd = popen('/usr/libexec/generate_otp.uc ' + safe_username + ' --no-increment');
+				// safe_username is validated by sanitize_username() to only contain [a-zA-Z0-9_.-]
+				let fd = popen("/usr/libexec/generate_otp.uc '" + safe_username + "' --no-increment");
 				if (!fd)
 					return { code: '', error: 'Failed to generate code' };
 
@@ -652,7 +653,8 @@ const methods = {
 				if (step <= 0) step = 30;
 				let current_time = time();
 				
-				let fd = popen('ucode /usr/libexec/generate_otp.uc ' + safe_username + ' --no-increment --time=' + current_time);
+				// safe_username is validated, current_time is an integer from time()
+				let fd = popen("ucode /usr/libexec/generate_otp.uc '" + safe_username + "' --no-increment --time=" + current_time);
 				if (!fd)
 					return { code: '', error: 'Failed to generate code' };
 

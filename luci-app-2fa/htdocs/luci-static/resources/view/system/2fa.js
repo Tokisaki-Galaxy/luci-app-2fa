@@ -147,7 +147,7 @@ var CBICurrentCode = form.DummyValue.extend({
 					codeEl.style.color = '#999';
 				}
 			});
-		}, 1);
+		}, 1); // Poll every 1 second for smooth TOTP code countdown
 
 		return containerDiv;
 	}
@@ -394,17 +394,5 @@ return view.extend({
 			_('Scan with your authenticator app (Google Authenticator, Authy, etc.)'));
 
 		return m.render();
-	},
-
-	// Clean up polling when view is destroyed
-	handleSaveApply: function(ev, mode) {
-		return this.handleSave(ev).then(function() {
-			// Stop polling on save
-			if (totpPollInterval) {
-				clearInterval(totpPollInterval);
-				totpPollInterval = null;
-			}
-			return uci.apply();
-		});
 	}
 });
