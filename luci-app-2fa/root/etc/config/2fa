@@ -1,5 +1,10 @@
 config settings 'settings'
 	option enabled '0'
+	option ip_whitelist_enabled '0'
+	option rate_limit_enabled '0'
+	option rate_limit_max_attempts '5'
+	option rate_limit_window '60'
+	option rate_limit_lockout '300'
 
 config login 'root'
 	option key ''

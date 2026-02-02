@@ -25,6 +25,213 @@ function sanitize_username(username) {
 	return username;
 }
 
+// Validate IP address (IPv4 or IPv6)
+// Note: IPv6 validation is simplified - it accepts basic IPv6 formats but may allow some invalid addresses.
+function is_valid_ip(ip) {
+	if (!ip || ip == '')
+		return false;
+	// IPv4 pattern - validate each octet is 0-255
+	if (match(ip, /^(\d{1,3}\.){3}\d{1,3}$/)) {
+		let parts = split(ip, '.');
+		for (let i = 0; i < length(parts); i++) {
+			if (int(parts[i]) > 255) return false;
+		}
+		return true;
+	}
+	// IPv4 CIDR pattern
+	if (match(ip, /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/)) {
+		let cidr_parts = split(ip, '/');
+		let prefix = int(cidr_parts[1]);
+		if (prefix < 0 || prefix > 32) return false;
+		let ip_parts = split(cidr_parts[0], '.');
+		for (let i = 0; i < length(ip_parts); i++) {
+			if (int(ip_parts[i]) > 255) return false;
+		}
+		return true;
+	}
+	// IPv6 pattern (simplified - basic validation)
+	if (match(ip, /^[0-9a-fA-F:]+$/) && index(ip, ':') >= 0)
+		return true;
+	// IPv6 CIDR pattern
+	if (match(ip, /^[0-9a-fA-F:]+\/\d{1,3}$/) && index(ip, ':') >= 0) {
+		let cidr_parts = split(ip, '/');
+		let prefix = int(cidr_parts[1]);
+		if (prefix < 0 || prefix > 128) return false;
+		return true;
+	}
+	return false;
+}
+
+// Check if an IP is in a CIDR range
+// Note: For IPv6, CIDR matching falls back to exact string comparison.
+function ip_in_cidr(ip, cidr) {
+	// Split CIDR into IP and prefix
+	let parts = split(cidr, '/');
+	let network_ip = parts[0];
+	let prefix = (length(parts) > 1) ? int(parts[1]) : 32;
+	
+	// For IPv6, fall back to exact string comparison (limited support)
+	if (!match(ip, /^(\d{1,3}\.){3}\d{1,3}$/))
+		return ip == network_ip;
+	
+	if (!match(network_ip, /^(\d{1,3}\.){3}\d{1,3}$/))
+		return false;
+	
+	let ip_parts = split(ip, '.');
+	let net_parts = split(network_ip, '.');
+	
+	let ip_int = (int(ip_parts[0]) << 24) | (int(ip_parts[1]) << 16) | (int(ip_parts[2]) << 8) | int(ip_parts[3]);
+	let net_int = (int(net_parts[0]) << 24) | (int(net_parts[1]) << 16) | (int(net_parts[2]) << 8) | int(net_parts[3]);
+	
+	// Create network mask
+	let mask = 0;
+	if (prefix > 0) {
+		mask = (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF;
+	}
+	
+	return ((ip_int & mask) == (net_int & mask));
+}
+
+// Check if IP is in whitelist
+function is_ip_whitelisted(ip) {
+	let uci = require('uci');
+	let ctx = uci.cursor();
+	
+	// Check if IP whitelist is enabled
+	let whitelist_enabled = ctx.get('2fa', 'settings', 'ip_whitelist_enabled');
+	if (whitelist_enabled != '1')
+		return false;
+	
+	// Get whitelist
+	let settings = ctx.get_all('2fa', 'settings');
+	if (!settings || !settings.ip_whitelist)
+		return false;
+	
+	let ips = settings.ip_whitelist;
+	if (type(ips) == 'string') {
+		ips = [ips];
+	}
+	
+	for (let entry in ips) {
+		if (!entry || entry == '')
+			continue;
+		// Check if it's a CIDR range or exact match
+		if (index(entry, '/') >= 0) {
+			if (ip_in_cidr(ip, entry))
+				return true;
+		} else {
+			if (ip == entry)
+				return true;
+		}
+	}
+	
+	return false;
+}
+
+// Rate limit state file
+const RATE_LIMIT_FILE = '/tmp/2fa_rate_limit.json';
+
+// Load rate limit state
+function load_rate_limit_state() {
+	let fs = require('fs');
+	let content = fs.readfile(RATE_LIMIT_FILE);
+	if (!content)
+		return {};
+	
+	let state = json(content);
+	if (!state)
+		return {};
+	
+	return state;
+}
+
+// Save rate limit state
+function save_rate_limit_state(state) {
+	let fs = require('fs');
+	fs.writefile(RATE_LIMIT_FILE, sprintf('%J', state));
+}
+
+// Check rate limit
+function check_rate_limit(ip) {
+	let uci = require('uci');
+	let ctx = uci.cursor();
+	
+	// Check if rate limiting is enabled
+	let rate_limit_enabled = ctx.get('2fa', 'settings', 'rate_limit_enabled');
+	if (rate_limit_enabled != '1')
+		return { allowed: true, remaining: -1, locked_until: 0 };
+	
+	let max_attempts = int(ctx.get('2fa', 'settings', 'rate_limit_max_attempts') || '5');
+	let window = int(ctx.get('2fa', 'settings', 'rate_limit_window') || '60');
+	let lockout = int(ctx.get('2fa', 'settings', 'rate_limit_lockout') || '300');
+	
+	let now = time();
+	let state = load_rate_limit_state();
+	
+	if (!state[ip]) {
+		state[ip] = { attempts: [], locked_until: 0 };
+	}
+	
+	let ip_state = state[ip];
+	
+	// Check if IP is locked out
+	if (ip_state.locked_until > now) {
+		return { allowed: false, remaining: 0, locked_until: ip_state.locked_until };
+	}
+	
+	// Clean old attempts outside the window
+	let recent_attempts = [];
+	for (let attempt in ip_state.attempts) {
+		if (attempt > (now - window)) {
+			push(recent_attempts, attempt);
+		}
+	}
+	ip_state.attempts = recent_attempts;
+	
+	// Check if within rate limit
+	let remaining = max_attempts - length(ip_state.attempts);
+	if (remaining <= 0) {
+		// Lock out the IP
+		ip_state.locked_until = now + lockout;
+		ip_state.attempts = [];  // Reset attempts after lockout
+		save_rate_limit_state(state);
+		return { allowed: false, remaining: 0, locked_until: ip_state.locked_until };
+	}
+	
+	save_rate_limit_state(state);
+	return { allowed: true, remaining: remaining, locked_until: 0 };
+}
+
+// Record a failed login attempt
+function record_failed_attempt(ip) {
+	let uci = require('uci');
+	let ctx = uci.cursor();
+	
+	// Check if rate limiting is enabled
+	let rate_limit_enabled = ctx.get('2fa', 'settings', 'rate_limit_enabled');
+	if (rate_limit_enabled != '1')
+		return;
+	
+	let now = time();
+	let state = load_rate_limit_state();
+	
+	if (!state[ip]) {
+		state[ip] = { attempts: [], locked_until: 0 };
+	}
+	
+	push(state[ip].attempts, now);
+	save_rate_limit_state(state);
+}
+
+// Clear rate limit for an IP (on successful login)
+function clear_rate_limit(ip) {
+	let state = load_rate_limit_state();
+	if (state[ip]) {
+		delete state[ip];
+		save_rate_limit_state(state);
+	}
+}
+
 // Check if 2FA is enabled for a user
 function is_2fa_enabled(username) {
 	let uci = require('uci');
@@ -129,6 +336,34 @@ function verify_otp(username, otp) {
 	}
 }
 
+// Get client IP from HTTP request
+// SECURITY NOTE: X-Forwarded-For header can be spoofed by clients.
+// This is acceptable for rate limiting (worst case: attacker can only bypass their own rate limit)
+// but should not be used for security-critical IP-based authorization.
+// For trusted proxy setups, consider implementing a trusted proxy IP list in the future.
+function get_client_ip(http) {
+	// Try to get client IP from various sources
+	let ip = null;
+	
+	if (http && http.getenv) {
+		// Prefer REMOTE_ADDR as it's more reliable (cannot be spoofed without proxy)
+		ip = http.getenv('REMOTE_ADDR');
+		
+		// Only use X-Forwarded-For if REMOTE_ADDR is a loopback/local address
+		// This provides basic protection against header spoofing
+		if (ip && (ip == '127.0.0.1' || ip == '::1')) {
+			let xff = http.getenv('HTTP_X_FORWARDED_FOR');
+			if (xff) {
+				// X-Forwarded-For may contain multiple IPs, get the first one
+				let parts = split(xff, ',');
+				ip = trim(parts[0]);
+			}
+		}
+	}
+	
+	return ip || '';
+}
+
 return {
 	// Plugin identifier
 	name: '2fa',
@@ -147,6 +382,27 @@ return {
 	 *   - message: string - Message to display
 	 */
 	check: function(http, user) {
+		let client_ip = get_client_ip(http);
+		
+		// Check if IP is whitelisted (bypass 2FA)
+		if (client_ip && is_ip_whitelisted(client_ip)) {
+			return { required: false, whitelisted: true };
+		}
+		
+		// Check rate limit
+		if (client_ip) {
+			let rate_check = check_rate_limit(client_ip);
+			if (!rate_check.allowed) {
+				let remaining_seconds = rate_check.locked_until - time();
+				return {
+					required: true,
+					blocked: true,
+					message: sprintf('Too many failed attempts. Please try again in %d seconds.', remaining_seconds),
+					fields: []
+				};
+			}
+		}
+		
 		if (!is_2fa_enabled(user)) {
 			return { required: false };
 		}
@@ -180,6 +436,26 @@ return {
 	 *   - message: string - Error message if failed
 	 */
 	verify: function(http, user) {
+		let client_ip = get_client_ip(http);
+		
+		// Check if IP is whitelisted (bypass 2FA)
+		if (client_ip && is_ip_whitelisted(client_ip)) {
+			return { success: true, whitelisted: true };
+		}
+		
+		// Check rate limit
+		if (client_ip) {
+			let rate_check = check_rate_limit(client_ip);
+			if (!rate_check.allowed) {
+				let remaining_seconds = rate_check.locked_until - time();
+				return {
+					success: false,
+					rate_limited: true,
+					message: sprintf('Too many failed attempts. Please try again in %d seconds.', remaining_seconds)
+				};
+			}
+		}
+		
 		let otp = http.formvalue('luci_otp');
 		
 		// Trim input immediately for consistent validation
@@ -187,6 +463,7 @@ return {
 			otp = trim(otp);
 		
 		if (!otp || otp == '') {
+			if (client_ip) record_failed_attempt(client_ip);
 			return {
 				success: false,
 				message: 'Please enter your one-time password.'
@@ -194,12 +471,16 @@ return {
 		}
 
 		if (!verify_otp(user, otp)) {
+			if (client_ip) record_failed_attempt(client_ip);
 			return {
 				success: false,
 				message: 'Invalid one-time password. Please try again.'
 			};
 		}
 
+		// Clear rate limit on successful login
+		if (client_ip) clear_rate_limit(client_ip);
+		
 		return { success: true };
 	}
 };

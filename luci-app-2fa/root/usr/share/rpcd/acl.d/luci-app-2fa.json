@@ -3,13 +3,13 @@
 		"description": "Grant access to 2-Factor Authentication configuration",
 		"read": {
 			"ubus": {
-				"2fa": [ "getConfig", "verifyOTP", "isEnabled" ]
+				"2fa": [ "getConfig", "verifyOTP", "isEnabled", "checkRateLimit", "getRateLimitStatus", "getCurrentCode" ]
 			},
 			"uci": [ "2fa" ]
 		},
 		"write": {
 			"ubus": {
-				"2fa": [ "setConfig", "generateKey" ]
+				"2fa": [ "setConfig", "generateKey", "clearRateLimit", "clearAllRateLimits" ]
 			},
 			"uci": [ "2fa" ]
 		}
@@ -18,7 +18,7 @@
 		"description": "Grant unauthenticated access to 2FA verification for login flow",
 		"read": {
 			"ubus": {
-				"2fa": [ "isEnabled", "verifyOTP" ]
+				"2fa": [ "isEnabled", "verifyOTP", "checkRateLimit" ]
 			}
 		}
 	}
