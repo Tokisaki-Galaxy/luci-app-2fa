@@ -297,101 +297,132 @@ return view.extend({
 			_('Configure two-factor authentication for LuCI login. ' +
 			  'When enabled, you will need to enter a one-time password from your authenticator app in addition to your username and password.'));
 
-		// Main settings section with tabs
-		s = m.section(form.NamedSection, 'settings', 'settings', _('Settings'));
+		// ================================================================
+		// OTP Settings Section - All OTP-related configuration
+		// ================================================================
+		s = m.section(form.NamedSection, 'root', 'login', _('OTP Settings'),
+			_('Configure your one-time password settings. Generate a secret key and scan the QR code with your authenticator app.'));
 		s.anonymous = true;
 		s.addremove = false;
 
-		// Tab 1: OTP Settings
-		s.tab('otp', _('OTP Settings'));
+		// Tab 1: Basic Settings
+		s.tab('basic', _('Basic'));
 
-		// Tab 2: Security Settings
-		s.tab('security', _('Security'));
+		// Tab 2: Advanced Settings
+		s.tab('advanced', _('Advanced'));
 
-		// === OTP Tab Options ===
+		// === Basic Tab ===
 
-		// Enable 2FA (in OTP tab)
-		o = s.taboption('otp', form.Flag, 'enabled', _('Enable 2FA'),
-			_('Enable two-factor authentication for LuCI login'));
+		// Enable 2FA toggle (read from settings section but displayed here for UX)
+		o = s.taboption('basic', form.Flag, 'enabled', _('Enable 2FA'),
+			_('Enable two-factor authentication for LuCI login. You must configure a secret key before enabling.'));
+		o.rmempty = false;
+		o.ucisection = 'settings';
+
+		// Secret Key
+		o = s.taboption('basic', CBIGenerateOTPKey, 'key', _('Secret Key'),
+			_('The secret key used to generate OTP codes. Click "Generate Key" to create a new key, then scan the QR code below with your authenticator app.'));
+
+		// Current Code Display
+		o = s.taboption('basic', CBICurrentCode, '_current_code', _('Current Code'),
+			_('This is the current one-time password generated from your secret key. Use it to verify your authenticator app shows the same code.'));
+
+		// QR Code
+		o = s.taboption('basic', CBIQRCode, '_qrcode', _('QR Code'),
+			_('Scan this QR code with your authenticator app (Google Authenticator, Authy, Microsoft Authenticator, etc.)'));
+
+		// === Advanced Tab ===
+
+		// OTP Type
+		o = s.taboption('advanced', form.ListValue, 'type', _('OTP Type'),
+			_('TOTP (Time-based) is recommended for most users. HOTP (Counter-based) can be used in environments without reliable time sync.'));
+		o.value('totp', _('TOTP (Time-based) - Recommended'));
+		o.value('hotp', _('HOTP (Counter-based)'));
+		o.default = 'totp';
+
+		// Time Step (TOTP)
+		o = s.taboption('advanced', form.Value, 'step', _('Time Step (seconds)'),
+			_('Time interval for TOTP code generation. Default is 30 seconds. Only change this if your authenticator app uses a different interval.'));
+		o.depends('type', 'totp');
+		o.default = '30';
+		o.datatype = 'range(15,60)';
+		o.placeholder = '30';
+
+		// Counter (HOTP)
+		o = s.taboption('advanced', form.Value, 'counter', _('Counter'),
+			_('Current counter value for HOTP. This increments with each successful login. Only modify if you need to resynchronize with your authenticator.'));
+		o.depends('type', 'hotp');
+		o.default = '0';
+		o.datatype = 'uinteger';
+
+		// ================================================================
+		// Security Settings Section - IP Whitelist & Brute Force Protection
+		// ================================================================
+		var securitySection = m.section(form.NamedSection, 'settings', 'settings', _('Security Settings'),
+			_('Configure security policies to protect your login and manage trusted networks.'));
+		securitySection.anonymous = true;
+		securitySection.addremove = false;
+
+		// Tab 1: IP Whitelist
+		securitySection.tab('whitelist', _('IP Whitelist'));
+
+		// Tab 2: Brute Force Protection
+		securitySection.tab('bruteforce', _('Brute Force Protection'));
+
+		// === IP Whitelist Tab ===
+
+		o = securitySection.taboption('whitelist', form.Flag, 'ip_whitelist_enabled', _('Enable IP Whitelist'),
+			_('Allow specific IP addresses or networks to bypass 2FA authentication. Useful for trusted networks like your home or office LAN.'));
 		o.rmempty = false;
 
-		// === Security Tab Options ===
-
-		// IP Whitelist section
-		o = s.taboption('security', form.Flag, 'ip_whitelist_enabled', _('Enable IP Whitelist'),
-			_('When enabled, IP addresses in the whitelist will bypass 2FA. ' +
-			  'This is useful for trusted networks like your local LAN.'));
-		o.rmempty = false;
-
-		o = s.taboption('security', CBIIPWhitelist, 'ip_whitelist', _('Whitelisted IPs'),
-			_('Enter IP addresses or CIDR ranges that can bypass 2FA. ' +
-			  'Examples: 192.168.1.100, 192.168.1.0/24, 10.0.0.0/8'));
+		o = securitySection.taboption('whitelist', CBIIPWhitelist, 'ip_whitelist', _('Trusted IP Addresses'),
+			_('Enter IP addresses or CIDR ranges that should bypass 2FA. These trusted addresses will only need username and password to log in.'));
 		o.depends('ip_whitelist_enabled', '1');
 		o.placeholder = '192.168.1.0/24';
 
-		// Brute Force Protection section
-		o = s.taboption('security', form.Flag, 'rate_limit_enabled', _('Enable Brute Force Protection'),
-			_('Protect against brute force attacks by limiting failed login attempts. ' +
-			  'When enabled, IPs with too many failed login attempts will be temporarily blocked.'));
+		// Whitelist examples
+		o = securitySection.taboption('whitelist', form.DummyValue, '_whitelist_examples', _('Examples'));
+		o.depends('ip_whitelist_enabled', '1');
+		o.rawhtml = true;
+		o.cfgvalue = function() {
+			return '<div style="color: #666; font-size: 12px;">' +
+				'<strong>' + _('Single IP:') + '</strong> 192.168.1.100<br>' +
+				'<strong>' + _('Subnet:') + '</strong> 192.168.1.0/24 (' + _('all IPs from .1 to .254') + ')<br>' +
+				'<strong>' + _('Larger network:') + '</strong> 10.0.0.0/8<br>' +
+				'<strong>' + _('IPv6:') + '</strong> fd00::/8' +
+				'</div>';
+		};
+
+		// === Brute Force Protection Tab ===
+
+		o = securitySection.taboption('bruteforce', form.Flag, 'rate_limit_enabled', _('Enable Brute Force Protection'),
+			_('Protect against automated attacks by temporarily blocking IPs with too many failed login attempts.'));
 		o.rmempty = false;
 
-		o = s.taboption('security', form.Value, 'rate_limit_max_attempts', _('Max Attempts'),
-			_('Maximum number of failed login attempts allowed within the time window'));
+		o = securitySection.taboption('bruteforce', form.Value, 'rate_limit_max_attempts', _('Max Failed Attempts'),
+			_('Number of failed login attempts allowed before an IP is temporarily blocked.'));
 		o.depends('rate_limit_enabled', '1');
 		o.default = '5';
 		o.datatype = 'range(1,100)';
 		o.placeholder = '5';
 
-		o = s.taboption('security', form.Value, 'rate_limit_window', _('Time Window (seconds)'),
-			_('Time window in seconds for counting failed attempts'));
+		o = securitySection.taboption('bruteforce', form.Value, 'rate_limit_window', _('Detection Window (seconds)'),
+			_('Time period during which failed attempts are counted. After this time, the counter resets.'));
 		o.depends('rate_limit_enabled', '1');
 		o.default = '60';
 		o.datatype = 'range(1,3600)';
 		o.placeholder = '60';
 
-		o = s.taboption('security', form.Value, 'rate_limit_lockout', _('Lockout Duration (seconds)'),
-			_('Duration in seconds to block an IP after exceeding the max attempts'));
+		o = securitySection.taboption('bruteforce', form.Value, 'rate_limit_lockout', _('Lockout Duration (seconds)'),
+			_('How long an IP remains blocked after exceeding the max attempts. Default: 5 minutes (300 seconds).'));
 		o.depends('rate_limit_enabled', '1');
 		o.default = '300';
 		o.datatype = 'range(1,86400)';
 		o.placeholder = '300';
 
-		o = s.taboption('security', CBIRateLimitStatus, '_rate_limit_status', _('Rate Limit Status'),
-			_('View and manage currently rate-limited IP addresses'));
+		o = securitySection.taboption('bruteforce', CBIRateLimitStatus, '_rate_limit_status', _('Blocked IPs'),
+			_('View currently blocked IP addresses and manage rate limits.'));
 		o.depends('rate_limit_enabled', '1');
-
-		// === OTP Configuration Section (separate from tabs) ===
-		var otpSection = m.section(form.NamedSection, 'root', 'login', _('OTP Configuration'),
-			_('Configure OTP settings for root user'));
-		otpSection.anonymous = true;
-		otpSection.addremove = false;
-
-		o = otpSection.option(CBIGenerateOTPKey, 'key', _('Secret Key'),
-			_('The secret key used to generate OTP codes. Generate a new key to set up 2FA.'));
-
-		o = otpSection.option(CBICurrentCode, '_current_code', _('Current Code'),
-			_('This is the current one-time password. Use it to verify your authenticator app is configured correctly.'));
-
-		o = otpSection.option(form.ListValue, 'type', _('OTP Type'),
-			_('TOTP (Time-based) requires synchronized time. HOTP (Counter-based) works offline.'));
-		o.value('totp', _('TOTP (Time-based)'));
-		o.value('hotp', _('HOTP (Counter-based)'));
-		o.default = 'totp';
-
-		o = otpSection.option(form.Value, 'step', _('Time Step'),
-			_('Time step in seconds for TOTP (default: 30)'));
-		o.depends('type', 'totp');
-		o.default = '30';
-		o.datatype = 'uinteger';
-
-		o = otpSection.option(form.Value, 'counter', _('Counter'),
-			_('Current counter value for HOTP'));
-		o.depends('type', 'hotp');
-		o.default = '0';
-		o.datatype = 'uinteger';
-
-		o = otpSection.option(CBIQRCode, '_qrcode', _('QR Code'),
-			_('Scan with your authenticator app (Google Authenticator, Authy, etc.)'));
 
 		return m.render();
 	}
