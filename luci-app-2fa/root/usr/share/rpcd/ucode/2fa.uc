@@ -1,6 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
-// SPDX-FileCopyrightText: 2024 Christian Marangi <ansuelsmth@gmail.com>
-
 'use strict';
 
 import { popen, open, glob, lsdir, writefile, readfile, stat, unlink } from 'fs';

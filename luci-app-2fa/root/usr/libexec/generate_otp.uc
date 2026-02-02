@@ -1,6 +1,7 @@
 #!/usr/bin/ucode
 
 // Copyright (c) 2024 Christian Marangi <ansuelsmth@gmail.com>
+// Copyright (c) 2026 tokiskai galaxy <moebest@outlook.jp>
 import { cursor } from 'uci';
 
 function cTos(c) {

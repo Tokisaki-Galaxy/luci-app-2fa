@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// SPDX-FileCopyrightText: 2024 LuCI 2FA Plugin Contributors
+// SPDX-FileCopyrightText: 2026 LuCI 2FA Plugin Contributors
 //
 // LuCI Authentication Plugin: Two-Factor Authentication (2FA/OTP)
 //
