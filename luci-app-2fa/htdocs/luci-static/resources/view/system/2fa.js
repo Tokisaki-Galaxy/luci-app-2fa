@@ -355,7 +355,7 @@ return view.extend({
 		// Strict Mode checkbox
 		o = s.taboption('basic', form.Flag, 'strict_mode', _('Strict Mode'),
 			_('Controls behavior when system time appears uncalibrated (before 2026). ' +
-			  'When ENABLED: Non-local IPs are blocked from logging in; local subnets (192.168.0.0/16, 10.0.0.0/8) bypass 2FA entirely. ' +
+			  'When ENABLED: Non-LAN IPs are blocked from logging in; IPs from LAN interface subnet bypass 2FA entirely. ' +
 			  'When DISABLED: All IPs bypass 2FA when time is uncalibrated (less secure but prevents lockouts).'));
 		o.rmempty = false;
 		o.ucisection = 'settings';

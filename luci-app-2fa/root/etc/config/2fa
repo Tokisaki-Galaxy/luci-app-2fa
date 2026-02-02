@@ -8,8 +8,8 @@ config settings 'settings'
 	# Minimum valid system time (Unix timestamp for 2026-01-01 00:00:00 UTC)
 	# If system time is before this, TOTP will be disabled for security
 	option min_valid_time '1767225600'
-	# Strict mode: when enabled and system time < 2026, block non-local subnet logins
-	# Local subnets (192.168.0.0/16 and 10.0.0.0/8) bypass 2FA in this case
+	# Strict mode: when enabled and system time < 2026, block non-LAN subnet logins
+	# IPs from the LAN interface subnet (detected from OpenWrt network config) bypass 2FA
 	option strict_mode '0'
 
 config login 'root'

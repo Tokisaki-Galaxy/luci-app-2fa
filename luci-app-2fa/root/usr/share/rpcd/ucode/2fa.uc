@@ -154,7 +154,82 @@ function is_ip_whitelisted(ip) {
 	return false;
 }
 
-// Check if IP is in local subnet (192.168.0.0/16 or 10.0.0.0/8)
+// Get all LAN interface subnets from OpenWrt network configuration
+// Returns array of CIDR strings (e.g., ["192.168.1.0/24", "10.0.0.0/24"])
+function get_lan_subnets() {
+	let subnets = [];
+	
+	// Method 1: Try ubus call to get LAN interface status (most accurate, includes DHCP-assigned IPs)
+	let fd = popen('ubus call network.interface.lan status 2>/dev/null', 'r');
+	if (fd) {
+		let output = fd.read('all');
+		fd.close();
+		
+		if (output) {
+			let status = json(output);
+			if (status && status['ipv4-address']) {
+				for (let addr in status['ipv4-address']) {
+					if (addr.address && addr.mask) {
+						// Convert mask (e.g., 24) and address to network CIDR
+						let ip_parts = split(addr.address, '.');
+						if (length(ip_parts) == 4) {
+							let mask = int(addr.mask);
+							// Calculate network address
+							let ip_int = (int(ip_parts[0]) << 24) | (int(ip_parts[1]) << 16) | (int(ip_parts[2]) << 8) | int(ip_parts[3]);
+							let net_mask = (0xFFFFFFFF << (32 - mask)) & 0xFFFFFFFF;
+							let net_int = ip_int & net_mask;
+							let net_addr = sprintf('%d.%d.%d.%d', 
+								(net_int >> 24) & 0xFF,
+								(net_int >> 16) & 0xFF,
+								(net_int >> 8) & 0xFF,
+								net_int & 0xFF);
+							push(subnets, net_addr + '/' + mask);
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	// Method 2: Fallback to UCI network config if ubus failed
+	if (length(subnets) == 0) {
+		let ctx = cursor();
+		
+		// Get LAN interface configuration
+		let lan_ipaddr = ctx.get('network', 'lan', 'ipaddr');
+		let lan_netmask = ctx.get('network', 'lan', 'netmask');
+		
+		if (lan_ipaddr && lan_netmask) {
+			// Convert netmask to CIDR prefix
+			let mask_parts = split(lan_netmask, '.');
+			if (length(mask_parts) == 4) {
+				let mask_int = (int(mask_parts[0]) << 24) | (int(mask_parts[1]) << 16) | (int(mask_parts[2]) << 8) | int(mask_parts[3]);
+				let prefix = 0;
+				for (let i = 31; i >= 0; i--) {
+					if ((mask_int >> i) & 1) prefix++;
+					else break;
+				}
+				
+				// Calculate network address
+				let ip_parts = split(lan_ipaddr, '.');
+				if (length(ip_parts) == 4) {
+					let ip_int = (int(ip_parts[0]) << 24) | (int(ip_parts[1]) << 16) | (int(ip_parts[2]) << 8) | int(ip_parts[3]);
+					let net_int = ip_int & mask_int;
+					let net_addr = sprintf('%d.%d.%d.%d',
+						(net_int >> 24) & 0xFF,
+						(net_int >> 16) & 0xFF,
+						(net_int >> 8) & 0xFF,
+						net_int & 0xFF);
+					push(subnets, net_addr + '/' + prefix);
+				}
+			}
+		}
+	}
+	
+	return subnets;
+}
+
+// Check if IP is in a LAN subnet (dynamically detected from OpenWrt network config)
 // Used for strict mode when system time is not calibrated
 function is_local_subnet(ip) {
 	if (!ip || ip == '')
@@ -164,13 +239,14 @@ function is_local_subnet(ip) {
 	if (!match(ip, /^(\d{1,3}\.){3}\d{1,3}$/))
 		return false;
 	
-	// Check 192.168.0.0/16 (192.168.x.x)
-	if (ip_in_cidr(ip, '192.168.0.0/16'))
-		return true;
+	// Get LAN subnets from OpenWrt configuration
+	let lan_subnets = get_lan_subnets();
 	
-	// Check 10.0.0.0/8 (10.x.x.x)
-	if (ip_in_cidr(ip, '10.0.0.0/8'))
-		return true;
+	// Check if IP is in any of the LAN subnets
+	for (let subnet in lan_subnets) {
+		if (ip_in_cidr(ip, subnet))
+			return true;
+	}
 	
 	return false;
 }
@@ -342,9 +418,9 @@ const methods = {
 					let strict_mode = ctx.get('2fa', 'settings', 'strict_mode');
 					
 					if (strict_mode == '1') {
-						// Strict mode enabled: block non-local subnets, bypass 2FA for local subnets
+						// Strict mode enabled: block non-LAN subnets, bypass 2FA for LAN subnets
 						if (client_ip && is_local_subnet(client_ip)) {
-							// Local subnet (192.168.0.0/16 or 10.0.0.0/8) - bypass 2FA
+							// LAN subnet - bypass 2FA
 							return { 
 								enabled: false, 
 								time_not_calibrated: true,
