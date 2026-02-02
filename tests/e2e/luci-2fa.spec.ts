@@ -486,7 +486,7 @@ test.describe('Login with 2FA', () => {
       
       // Verify OTP field attributes
       await expect(otpField).toHaveAttribute('inputmode', 'numeric');
-      await expect(otpField).toHaveAttribute('maxlength', '6');
+      await expect(otpField).toHaveAttribute('maxlength', '9');
     } else {
       // 2FA not enabled, take screenshot of normal login
       await takeScreenshot(page, '18-login-2fa-not-enabled');

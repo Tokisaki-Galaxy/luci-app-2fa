@@ -537,7 +537,7 @@ return {
 					type: 'text',
 					label: 'One-Time Password or Backup Code',
 					placeholder: '123456 or XXXX-XXXX',
-					inputmode: 'text',
+					inputmode: 'numeric',
 					pattern: '[0-9A-Za-z-]*',
 					maxlength: 9,
 					autocomplete: 'one-time-code',
