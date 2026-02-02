@@ -14,6 +14,5 @@ config login 'root'
 	option type 'totp'
 	option step '30'
 	option counter '0'
-	# Backup security codes for emergency access (comma-separated, hashed)
-	# Generated automatically when 2FA is enabled
-	list backup_codes ''
+	# Backup codes are stored as hashed values and added dynamically
+	# when generated via the UI. Do not pre-populate this list.

@@ -296,9 +296,12 @@ var CBIBackupCodes = form.DummyValue.extend({
 		var statusDiv = container.querySelector('#backup-codes-status');
 		return callGetBackupCodesCount('root').then(function(res) {
 			if (statusDiv) {
-				if (res.count > 0) {
+				// res is the count value directly (number), not an object
+				// because rpc.declare with expect: { count: 0 } extracts the count field
+				var count = (typeof res === 'object' && res !== null) ? res.count : res;
+				if (count > 0) {
 					statusDiv.innerHTML = '<span style="color: green;">✓</span> ' + 
-						_('You have %d backup code(s) remaining.').format(res.count) +
+						_('You have %d backup code(s) remaining.').format(count) +
 						' <em style="font-size: 12px; color: #666;">' + 
 						_('Each code can only be used once.') + '</em>';
 				} else {
