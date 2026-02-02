@@ -34,7 +34,7 @@ var callGetCurrentCode = rpc.declare({
 	object: '2fa',
 	method: 'getCurrentCode',
 	params: [ 'username' ],
-	expect: { code: '', type: 'totp' }
+	expect: { }
 });
 
 var callGetRateLimitStatus = rpc.declare({
