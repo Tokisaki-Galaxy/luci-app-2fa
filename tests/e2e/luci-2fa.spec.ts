@@ -1,5 +1,25 @@
 import { test, expect, Page } from '@playwright/test';
 
+import * as OTPAuth from 'otpauth';
+
+// Test configuration - should match the 2FA setup in the container
+const TEST_SECRET = 'JBSWY3DPEHPK3PXP';
+
+/**
+ * Generate a valid TOTP code using the standard otpauth library
+ */
+function generateTOTP(secret: string): string {
+  const totp = new OTPAuth.TOTP({
+    issuer: 'OpenWrt',
+    label: 'root',
+    algorithm: 'SHA1',
+    digits: 6,
+    period: 30,
+    secret: OTPAuth.Secret.fromBase32(secret)
+  });
+  return totp.generate();
+}
+
 /**
  * Helper function to verify we are logged in (not on login page)
  */
@@ -30,6 +50,7 @@ async function verifyLoggedIn(page: Page): Promise<boolean> {
 
 /**
  * Helper function to login to LuCI with retries
+ * Handles both standard login and 2FA login (when OTP field is present)
  * Throws an error if login fails after all retries
  */
 async function login(page: Page, password: string = 'password', maxRetries: number = 3) {
@@ -45,6 +66,16 @@ async function login(page: Page, password: string = 'password', maxRetries: numb
       
       // Fill in password using the actual input element
       await page.locator('#luci_password').fill(password);
+      
+      // Check if OTP field is present (2FA enabled) - with new flow, it appears on initial page
+      const otpField = page.locator('#luci_otp');
+      const hasOtpField = await otpField.isVisible().catch(() => false);
+      
+      if (hasOtpField) {
+        // 2FA is enabled, fill in OTP code
+        const otpCode = generateTOTP(TEST_SECRET);
+        await otpField.fill(otpCode);
+      }
       
       // Click login button
       await page.locator('button.cbi-button-positive').click();
