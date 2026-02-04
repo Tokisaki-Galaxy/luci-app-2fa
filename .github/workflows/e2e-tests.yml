@@ -2,9 +2,9 @@ name: E2E Tests & UI Screenshots
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   workflow_dispatch:
 
 env:
@@ -27,8 +27,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: "npm"
           cache-dependency-path: package.json
 
       - name: Install dependencies
@@ -97,7 +97,7 @@ jobs:
             sleep 5
             COUNT=$((COUNT+1))
           done
-          
+
           if [ $COUNT -eq $MAX_RETRIES ]; then
             echo "Timeout waiting for LuCI"
             docker logs $CONTAINER_NAME
@@ -115,11 +115,11 @@ jobs:
             /www/luci-static/resources/view/system \
             /usr/share/ucode/luci/template/themes/bootstrap \
             /usr/libexec
-          
+
           # Deploy luci-app-2fa files
           docker cp luci-app-2fa/root/usr/libexec/generate_otp.uc $CONTAINER_NAME:/usr/libexec/generate_otp.uc
           docker exec $CONTAINER_NAME chmod +x /usr/libexec/generate_otp.uc
-          
+
           docker cp luci-app-2fa/root/usr/share/rpcd/ucode/2fa.uc $CONTAINER_NAME:/usr/share/rpcd/ucode/2fa.uc
           docker cp luci-app-2fa/root/usr/share/rpcd/acl.d/luci-app-2fa.json $CONTAINER_NAME:/usr/share/rpcd/acl.d/luci-app-2fa.json
           docker cp luci-app-2fa/root/usr/share/luci/auth.d/2fa.uc $CONTAINER_NAME:/usr/share/luci/auth.d/2fa.uc
@@ -127,7 +127,7 @@ jobs:
           docker cp luci-app-2fa/htdocs/luci-static/resources/view/system/2fa.js $CONTAINER_NAME:/www/luci-static/resources/view/system/2fa.js
           docker cp luci-app-2fa/htdocs/luci-static/resources/uqr.js $CONTAINER_NAME:/www/luci-static/resources/uqr.js
           docker cp luci-app-2fa/root/etc/config/2fa $CONTAINER_NAME:/etc/config/2fa
-          
+
           # Deploy luci-patch files
           docker cp luci-patch/patch/luci $CONTAINER_NAME:/usr/share/rpcd/ucode/luci
           docker cp luci-patch/patch/dispatcher.uc $CONTAINER_NAME:/usr/share/ucode/luci/dispatcher.uc
@@ -136,28 +136,28 @@ jobs:
           docker cp luci-patch/patch/view/system/exauth.js $CONTAINER_NAME:/www/luci-static/resources/view/system/exauth.js
           docker cp luci-patch/patch/luci-base.json $CONTAINER_NAME:/usr/share/rpcd/acl.d/luci-base.json
           docker cp luci-patch/patch/luci-mod-system.json $CONTAINER_NAME:/usr/share/luci/menu.d/luci-mod-system.json
-          
+
           # Enable external auth
           docker exec $CONTAINER_NAME sh -c '
             uci set luci.main=core
             uci set luci.main.external_auth=1
             uci commit luci
           '
-          
+
           # Restart rpcd
           docker exec $CONTAINER_NAME sh -c 'kill $(pgrep rpcd) 2>/dev/null || true; sleep 1; /sbin/rpcd &'
           sleep 2
-          
+
           # Clear LuCI cache
           docker exec $CONTAINER_NAME rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache*
-          
+
           echo "Plugin deployed successfully"
 
       - name: Verify services
         run: |
           echo "Checking ubus services..."
           docker exec $CONTAINER_NAME ubus list | head -20
-          
+
           echo "Testing 2fa RPC endpoint..."
           docker exec $CONTAINER_NAME ubus call 2fa getConfig '{}' || echo "Note: 2fa service may need auth"
 
@@ -194,7 +194,7 @@ jobs:
             sleep 3
             COUNT=$((COUNT+1))
           done
-          
+
           if [ $COUNT -eq $MAX_RETRIES ]; then
             echo "Warning: LuCI may not be fully ready, but continuing with tests..."
           fi
@@ -211,7 +211,7 @@ jobs:
           # Copy screenshots from test-results to screenshots directory
           find test-results -name "*.png" -exec cp {} screenshots/ \; 2>/dev/null || true
           find playwright-report -name "*.png" -exec cp {} screenshots/ \; 2>/dev/null || true
-          
+
           # List screenshots
           echo "Screenshots collected:"
           ls -la screenshots/ || echo "No screenshots found"
@@ -247,10 +247,10 @@ jobs:
           script: |
             const fs = require('fs');
             const path = require('path');
-            
+
             const screenshotsDir = 'screenshots';
             let screenshotFiles = [];
-            
+
             try {
               screenshotFiles = fs.readdirSync(screenshotsDir)
                 .filter(f => f.endsWith('.png'))
@@ -258,58 +258,58 @@ jobs:
             } catch (e) {
               console.log('No screenshots directory found');
             }
-            
+
             if (screenshotFiles.length === 0) {
               console.log('No screenshots found');
               return;
             }
-            
+
             // Get artifact URL
             const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
               owner: context.repo.owner,
               repo: context.repo.repo,
               run_id: context.runId
             });
-            
+
             const screenshotArtifact = artifacts.artifacts.find(a => a.name === 'ui-screenshots');
             const reportArtifact = artifacts.artifacts.find(a => a.name === 'playwright-report');
-            
+
             let comment = `## 📸 UI Screenshots\n\n`;
             comment += `Screenshots from E2E tests are available:\n\n`;
-            
+
             if (screenshotArtifact) {
               comment += `📦 **[Download Screenshots](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}/artifacts/${screenshotArtifact.id})**\n\n`;
             }
-            
+
             if (reportArtifact) {
               comment += `📊 **[Download Playwright Report](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}/artifacts/${reportArtifact.id})**\n\n`;
             }
-            
+
             comment += `### Screenshot List\n\n`;
             comment += `| # | Screenshot |\n`;
             comment += `|---|---|\n`;
-            
+
             screenshotFiles.forEach((file, index) => {
               const name = file.replace('.png', '').replace(/-/g, ' ');
               comment += `| ${index + 1} | ${name} |\n`;
             });
-            
+
             comment += `\n---\n`;
             comment += `*Screenshots captured at ${new Date().toISOString()}*\n`;
             comment += `*Workflow run: [#${context.runId}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})*`;
-            
+
             // Find existing comment to update
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number
             });
-            
+
             const botComment = comments.find(c => 
               c.user.type === 'Bot' && 
               c.body.includes('## 📸 UI Screenshots')
             );
-            
+
             if (botComment) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
@@ -331,10 +331,10 @@ jobs:
         run: |
           echo "=== Container Logs ==="
           docker logs $CONTAINER_NAME 2>&1 || true
-          
+
           echo "=== Running Processes ==="
           docker exec $CONTAINER_NAME ps aux 2>&1 || true
-          
+
           echo "=== ubus list ==="
           docker exec $CONTAINER_NAME ubus list 2>&1 || true
 

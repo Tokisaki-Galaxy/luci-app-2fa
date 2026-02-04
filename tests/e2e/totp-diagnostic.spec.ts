@@ -64,7 +64,7 @@ function getContainerOTP(username: string = "root"): string {
   try {
     const result = execSync(
       `docker exec ${CONTAINER_NAME} ucode /usr/libexec/generate_otp.uc ${username}`,
-      { encoding: "utf-8" }
+      { encoding: "utf-8" },
     );
     return result.trim();
   } catch {
@@ -75,14 +75,11 @@ function getContainerOTP(username: string = "root"): string {
 /**
  * Generate OTP using ucode with a specific timestamp
  */
-function getContainerOTPWithTime(
-  username: string,
-  timestamp: number
-): string {
+function getContainerOTPWithTime(username: string, timestamp: number): string {
   try {
     const result = execSync(
       `docker exec ${CONTAINER_NAME} ucode /usr/libexec/generate_otp.uc ${username} --no-increment --time=${timestamp}`,
-      { encoding: "utf-8" }
+      { encoding: "utf-8" },
     );
     return result.trim();
   } catch {
@@ -95,9 +92,12 @@ function getContainerOTPWithTime(
  */
 function get2FAConfig(): Record<string, string> {
   try {
-    const result = execSync(`docker exec ${CONTAINER_NAME} ubus call 2fa getConfig '{}'`, {
-      encoding: "utf-8",
-    });
+    const result = execSync(
+      `docker exec ${CONTAINER_NAME} ubus call 2fa getConfig '{}'`,
+      {
+        encoding: "utf-8",
+      },
+    );
     return JSON.parse(result.trim());
   } catch {
     return {};
@@ -130,14 +130,17 @@ async function checkLoginSuccess(page: Page): Promise<{
   const url = page.url();
   const pageContent = await page.content();
 
-  const hasLogout = pageContent.includes("Log out") || pageContent.includes("Logout");
-  const hasStatusPage = pageContent.includes("Status") && pageContent.includes("System");
+  const hasLogout =
+    pageContent.includes("Log out") || pageContent.includes("Logout");
+  const hasStatusPage =
+    pageContent.includes("Status") && pageContent.includes("System");
   const hasLoginForm = pageContent.includes('id="luci_password"');
   const hasOTPField = pageContent.includes('id="luci_otp"');
 
   // Login is successful if we have logout link or status page content,
   // AND no login form AND no OTP field
-  const isLoggedIn = (hasLogout || hasStatusPage) && !hasLoginForm && !hasOTPField;
+  const isLoggedIn =
+    (hasLogout || hasStatusPage) && !hasLoginForm && !hasOTPField;
 
   return {
     isLoggedIn,
@@ -163,11 +166,17 @@ test.describe("TOTP Diagnostic Tests", () => {
     const containerTime = getContainerTime();
     const timeDiff = Math.abs(systemTime - containerTime);
 
-    console.log(`System Time (test client): ${systemTime} (${new Date(systemTime * 1000).toISOString()})`);
-    console.log(`Container Time:            ${containerTime} (${new Date(containerTime * 1000).toISOString()})`);
+    console.log(
+      `System Time (test client): ${systemTime} (${new Date(systemTime * 1000).toISOString()})`,
+    );
+    console.log(
+      `Container Time:            ${containerTime} (${new Date(containerTime * 1000).toISOString()})`,
+    );
     console.log(`Time Difference:           ${timeDiff} seconds`);
     console.log(`Maximum Allowed Drift:     30 seconds`);
-    console.log(`Time Sync Status:          ${timeDiff <= 30 ? "✓ OK" : "✗ OUT OF SYNC"}`);
+    console.log(
+      `Time Sync Status:          ${timeDiff <= 30 ? "✓ OK" : "✗ OUT OF SYNC"}`,
+    );
     console.log("");
 
     // Store for use in later tests
@@ -209,17 +218,29 @@ test.describe("TOTP Diagnostic Tests", () => {
     console.log("TOTP Values Generated:");
     console.log("-----------------------------------------------");
     console.log(`External (current time ${systemTime}):     ${externalTOTP}`);
-    console.log(`External (container time ${containerTime}): ${externalTOTPContainerTime}`);
+    console.log(
+      `External (container time ${containerTime}): ${externalTOTPContainerTime}`,
+    );
     console.log(`Ucode (no timestamp):                 ${ucodeTOTP}`);
-    console.log(`Ucode (at system time ${systemTime}):      ${ucodeAtSystemTime}`);
-    console.log(`Ucode (at container time ${containerTime}): ${ucodeAtContainerTime}`);
+    console.log(
+      `Ucode (at system time ${systemTime}):      ${ucodeAtSystemTime}`,
+    );
+    console.log(
+      `Ucode (at container time ${containerTime}): ${ucodeAtContainerTime}`,
+    );
     console.log("");
 
     // Check consistency
     console.log("Consistency Checks:");
-    console.log(`External(sys) == Ucode(sys):      ${externalTOTP === ucodeAtSystemTime ? "✓ MATCH" : `✗ MISMATCH (${externalTOTP} vs ${ucodeAtSystemTime})`}`);
-    console.log(`External(cnt) == Ucode(cnt):      ${externalTOTPContainerTime === ucodeAtContainerTime ? "✓ MATCH" : `✗ MISMATCH (${externalTOTPContainerTime} vs ${ucodeAtContainerTime})`}`);
-    console.log(`Ucode(live) == External(sys):     ${ucodeTOTP === externalTOTP ? "✓ MATCH" : `✗ MISMATCH (${ucodeTOTP} vs ${externalTOTP})`}`);
+    console.log(
+      `External(sys) == Ucode(sys):      ${externalTOTP === ucodeAtSystemTime ? "✓ MATCH" : `✗ MISMATCH (${externalTOTP} vs ${ucodeAtSystemTime})`}`,
+    );
+    console.log(
+      `External(cnt) == Ucode(cnt):      ${externalTOTPContainerTime === ucodeAtContainerTime ? "✓ MATCH" : `✗ MISMATCH (${externalTOTPContainerTime} vs ${ucodeAtContainerTime})`}`,
+    );
+    console.log(
+      `Ucode(live) == External(sys):     ${ucodeTOTP === externalTOTP ? "✓ MATCH" : `✗ MISMATCH (${ucodeTOTP} vs ${externalTOTP})`}`,
+    );
     console.log("");
 
     // The external library and ucode should generate the same OTP for the same timestamp
@@ -234,7 +255,9 @@ test.describe("TOTP Diagnostic Tests", () => {
     const step = 30;
 
     console.log(`Container time: ${containerTime}`);
-    console.log("Testing verification across time windows (current, -1, +1):\n");
+    console.log(
+      "Testing verification across time windows (current, -1, +1):\n",
+    );
 
     // The auth.d/2fa.uc checks offsets [0, -1, 1] (in that order)
     for (const offset of [0, -1, 1]) {
@@ -282,7 +305,9 @@ test.describe("TOTP Diagnostic Tests", () => {
 
     console.log(`  System time:             ${systemTime}`);
     console.log(`  Container time:          ${containerTime}`);
-    console.log(`  Time diff:               ${Math.abs(systemTime - containerTime)}s`);
+    console.log(
+      `  Time diff:               ${Math.abs(systemTime - containerTime)}s`,
+    );
     console.log(`  External OTP (sys):      ${externalTOTP}`);
     console.log(`  External OTP (cnt):      ${externalTOTPContainerTime}`);
     console.log(`  Ucode OTP:               ${ucodeTOTP}`);
@@ -325,20 +350,34 @@ test.describe("TOTP Diagnostic Tests", () => {
       pageContent.includes("Invalid one-time password");
 
     console.log(`  Final URL: ${loginResult.url}`);
-    console.log(`  Is on LuCI page:   ${loginResult.url.includes("luci") ? "✓ Yes" : "✗ No"}`);
-    console.log(`  Has login form:    ${loginResult.hasLoginForm ? "✗ Yes (still on login)" : "✓ No"}`);
-    console.log(`  Has OTP field:     ${loginResult.hasOTPField ? "⚠ Yes (may need retry)" : "✓ No"}`);
+    console.log(
+      `  Is on LuCI page:   ${loginResult.url.includes("luci") ? "✓ Yes" : "✗ No"}`,
+    );
+    console.log(
+      `  Has login form:    ${loginResult.hasLoginForm ? "✗ Yes (still on login)" : "✓ No"}`,
+    );
+    console.log(
+      `  Has OTP field:     ${loginResult.hasOTPField ? "⚠ Yes (may need retry)" : "✓ No"}`,
+    );
     console.log(`  Has error message: ${hasErrorMessage ? "✗ Yes" : "✓ No"}`);
-    console.log(`  Has logout link:   ${loginResult.hasLogout ? "✓ Yes (logged in)" : "✗ No"}`);
-    console.log(`  Has status page:   ${loginResult.hasStatusPage ? "✓ Yes (logged in)" : "✗ No"}`);
+    console.log(
+      `  Has logout link:   ${loginResult.hasLogout ? "✓ Yes (logged in)" : "✗ No"}`,
+    );
+    console.log(
+      `  Has status page:   ${loginResult.hasStatusPage ? "✓ Yes (logged in)" : "✗ No"}`,
+    );
     console.log("");
 
-    console.log(`  LOGIN RESULT: ${loginResult.isLoggedIn ? "✓ SUCCESS" : "✗ FAILED"}`);
+    console.log(
+      `  LOGIN RESULT: ${loginResult.isLoggedIn ? "✓ SUCCESS" : "✗ FAILED"}`,
+    );
     console.log("");
 
     // Extract error message if present
     if (hasErrorMessage) {
-      const errorMatch = pageContent.match(/class="alert-message[^"]*"[^>]*>([^<]+)/);
+      const errorMatch = pageContent.match(
+        /class="alert-message[^"]*"[^>]*>([^<]+)/,
+      );
       if (errorMatch) {
         console.log(`  Error message: ${errorMatch[1].trim()}`);
       }
@@ -349,7 +388,9 @@ test.describe("TOTP Diagnostic Tests", () => {
 
   test("6. Login with synchronized container time OTP", async ({ page }) => {
     console.log("=== Login with Container-Time OTP ===\n");
-    console.log("This test generates OTP using the container's time instead of system time.\n");
+    console.log(
+      "This test generates OTP using the container's time instead of system time.\n",
+    );
 
     // Navigate to login page
     await page.goto("/cgi-bin/luci/", {
@@ -407,8 +448,14 @@ test.describe("TOTP Diagnostic Tests", () => {
 
     // Test with various OTP codes
     const testCases = [
-      { name: "External OTP (system time)", otp: generateTOTP(TEST_SECRET, systemTime) },
-      { name: "External OTP (container time)", otp: generateTOTP(TEST_SECRET, containerTime) },
+      {
+        name: "External OTP (system time)",
+        otp: generateTOTP(TEST_SECRET, systemTime),
+      },
+      {
+        name: "External OTP (container time)",
+        otp: generateTOTP(TEST_SECRET, containerTime),
+      },
       { name: "Ucode OTP (live)", otp: getContainerOTP("root") },
       { name: "Invalid OTP", otp: "000000" },
     ];
@@ -417,10 +464,12 @@ test.describe("TOTP Diagnostic Tests", () => {
       try {
         const result = execSync(
           `docker exec ${CONTAINER_NAME} ubus call 2fa verifyOTP '{"otp":"${testCase.otp}","username":"root"}'`,
-          { encoding: "utf-8" }
+          { encoding: "utf-8" },
         );
         const parsed = JSON.parse(result.trim());
-        console.log(`${testCase.name} (${testCase.otp}): ${parsed.result ? "✓ ACCEPTED" : "✗ REJECTED"}`);
+        console.log(
+          `${testCase.name} (${testCase.otp}): ${parsed.result ? "✓ ACCEPTED" : "✗ REJECTED"}`,
+        );
       } catch (err) {
         console.log(`${testCase.name} (${testCase.otp}): ✗ ERROR`);
       }
@@ -430,7 +479,9 @@ test.describe("TOTP Diagnostic Tests", () => {
 
   test("8. Verify auth.d plugin directly", async () => {
     console.log("=== Auth Plugin Direct Test ===\n");
-    console.log("Testing if the auth.d/2fa.uc plugin can verify OTP correctly.\n");
+    console.log(
+      "Testing if the auth.d/2fa.uc plugin can verify OTP correctly.\n",
+    );
 
     const containerTime = getContainerTime();
     const validOTP = generateTOTP(TEST_SECRET, containerTime);
@@ -474,19 +525,28 @@ test.describe("TOTP Diagnostic Tests", () => {
 
     try {
       // Write test script to container
-      execSync(`docker exec ${CONTAINER_NAME} sh -c 'cat > /tmp/test_auth.uc'`, {
-        input: testScript,
-      });
+      execSync(
+        `docker exec ${CONTAINER_NAME} sh -c 'cat > /tmp/test_auth.uc'`,
+        {
+          input: testScript,
+        },
+      );
 
       // Run the test
-      const result = execSync(`docker exec ${CONTAINER_NAME} ucode /tmp/test_auth.uc`, {
-        encoding: "utf-8",
-      });
+      const result = execSync(
+        `docker exec ${CONTAINER_NAME} ucode /tmp/test_auth.uc`,
+        {
+          encoding: "utf-8",
+        },
+      );
       console.log("Auth plugin test output:");
       console.log(result);
     } catch (err: unknown) {
       const execError = err as { stderr?: string; stdout?: string };
-      console.log("Error running auth test:", execError.stderr || execError.stdout);
+      console.log(
+        "Error running auth test:",
+        execError.stderr || execError.stdout,
+      );
     }
   });
 });

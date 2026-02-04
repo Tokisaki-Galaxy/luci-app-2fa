@@ -17,25 +17,22 @@ When the 2FA plugin is globally enabled but a user's secret key is empty, the sy
 ```javascript
 // Line 356-377: is_2fa_enabled() function
 function is_2fa_enabled(username) {
-    let uci = require('uci');
-    let ctx = uci.cursor();
-    
-    // Check if 2FA is globally enabled
-    let enabled = ctx.get('2fa', 'settings', 'enabled');
-    if (enabled != '1')
-        return false;
+  let uci = require("uci");
+  let ctx = uci.cursor();
 
-    // Sanitize username
-    let safe_username = sanitize_username(username);
-    if (!safe_username)
-        return false;
+  // Check if 2FA is globally enabled
+  let enabled = ctx.get("2fa", "settings", "enabled");
+  if (enabled != "1") return false;
 
-    // Check if user has a key configured
-    let key = ctx.get('2fa', safe_username, 'key');
-    if (!key || key == '')
-        return false;  // ← Returns false if key is empty!
+  // Sanitize username
+  let safe_username = sanitize_username(username);
+  if (!safe_username) return false;
 
-    return true;
+  // Check if user has a key configured
+  let key = ctx.get("2fa", safe_username, "key");
+  if (!key || key == "") return false; // ← Returns false if key is empty!
+
+  return true;
 }
 ```
 
@@ -50,13 +47,14 @@ function is_2fa_enabled(username) {
 
 **Behavior Summary**:
 
-| Global 2FA Setting | User's Key | Behavior |
-|-------------------|------------|----------|
-| Enabled | Has valid key | 2FA required, OTP field shown |
-| Enabled | Empty or missing | 2FA **bypassed**, password-only login |
-| Disabled | Any | 2FA bypassed, password-only login |
+| Global 2FA Setting | User's Key       | Behavior                              |
+| ------------------ | ---------------- | ------------------------------------- |
+| Enabled            | Has valid key    | 2FA required, OTP field shown         |
+| Enabled            | Empty or missing | 2FA **bypassed**, password-only login |
+| Disabled           | Any              | 2FA bypassed, password-only login     |
 
 **Safety Design**: This is a **safety feature** to prevent lockout scenarios:
+
 - If you accidentally enable 2FA globally but haven't set up keys yet
 - If you lose access to your authenticator app
 - You can still log in to reconfigure
@@ -76,6 +74,7 @@ Each user has a **separate UCI configuration section** with their own individual
 **Code Evidence**:
 
 **UCI Configuration Structure** (from `luci-app-2fa/root/etc/config/2fa`):
+
 ```
 config settings 'settings'
     option enabled '0'
@@ -95,14 +94,16 @@ config login 'root'          ← Separate section for 'root' user
 ```
 
 **How Keys are Retrieved** (from `auth.d/2fa.uc` line 372):
+
 ```javascript
 // The username is used as the UCI section name
-let key = ctx.get('2fa', safe_username, 'key');
+let key = ctx.get("2fa", safe_username, "key");
 //                         ^^^^^^^^^^^^
 //                         Section name = username
 ```
 
 For example:
+
 - Root user key: `uci get 2fa.root.key`
 - Admin user key: `uci get 2fa.admin.key`
 - Other user key: `uci get 2fa.username.key`
@@ -124,18 +125,20 @@ uci commit 2fa
 
 **Behavior Summary**:
 
-| User | Key Storage | TOTP Codes |
-|------|-------------|------------|
-| root | `2fa.root.key` | Generated from root's key |
+| User  | Key Storage     | TOTP Codes                 |
+| ----- | --------------- | -------------------------- |
+| root  | `2fa.root.key`  | Generated from root's key  |
 | admin | `2fa.admin.key` | Generated from admin's key |
 | user1 | `2fa.user1.key` | Generated from user1's key |
 
 **Each user must**:
+
 1. Generate their own secret key
 2. Scan their own QR code with their authenticator app
 3. Use their own TOTP codes during login
 
 **Independent Configuration**:
+
 - You can enable 2FA for some users and not others
 - Each user can choose TOTP or HOTP independently
 - Each user can have different time step settings
@@ -145,13 +148,17 @@ uci commit 2fa
 ## Security Implications
 
 ### Empty Key Safety
+
 The empty key bypass is intentional and safe because:
+
 1. User still needs valid password to log in
 2. Prevents complete lockout if 2FA misconfigured
 3. Admin can log in to fix/configure 2FA properly
 
 ### User Separation Benefits
+
 Having separate keys per user provides:
+
 1. **Individual accountability**: Each user's 2FA is independent
 2. **Security isolation**: Compromising one user's authenticator doesn't affect others
 3. **Flexible deployment**: Can gradually roll out 2FA user-by-user
@@ -167,6 +174,7 @@ Automated tests have been created to verify both behaviors:
 2. **tests/e2e/user-specific-keys.spec.ts**: Tests user-specific key storage
 
 Run tests with:
+
 ```bash
 npm test
 ```
@@ -203,12 +211,12 @@ npm test
 
 ## Code References
 
-| Behavior | File | Lines | Function |
-|----------|------|-------|----------|
-| Empty key bypass | `auth.d/2fa.uc` | 356-377 | `is_2fa_enabled()` |
-| User-specific keys | `auth.d/2fa.uc` | 372 | Key retrieval |
-| UCI config structure | `root/etc/config/2fa` | 13-17 | Default config |
-| RPC backend | `rpcd/ucode/2fa.uc` | 381-456 | `isEnabled` method |
+| Behavior             | File                  | Lines   | Function           |
+| -------------------- | --------------------- | ------- | ------------------ |
+| Empty key bypass     | `auth.d/2fa.uc`       | 356-377 | `is_2fa_enabled()` |
+| User-specific keys   | `auth.d/2fa.uc`       | 372     | Key retrieval      |
+| UCI config structure | `root/etc/config/2fa` | 13-17   | Default config     |
+| RPC backend          | `rpcd/ucode/2fa.uc`   | 381-456 | `isEnabled` method |
 
 ---
 

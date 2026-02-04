@@ -13,11 +13,12 @@ This patch adds a **generic, non-hardcoded authentication plugin mechanism** to 
    - Each plugin is a ucode file (`.uc`) that exports a standard interface
 
 2. **Plugin Interface**:
+
 ```javascript
 {
     name: 'string',        // Plugin identifier (e.g., '2fa', 'captcha', 'ip-whitelist')
     priority: number,      // Execution order (lower = first, default: 50)
-    
+
     // Called after password verification succeeds
     // Return { required: true } if additional auth is needed
     check: function(http, user) {
@@ -33,7 +34,7 @@ This patch adds a **generic, non-hardcoded authentication plugin mechanism** to 
             message: 'Message to display to user'
         };
     },
-    
+
     // Called to verify the additional authentication
     verify: function(http, user) {
         return {
@@ -62,26 +63,26 @@ This patch adds a **generic, non-hardcoded authentication plugin mechanism** to 
 
 ### Origin Files (from upstream LuCI)
 
-| Origin File | LuCI Source Path |
-|---|---|
-| `origin/dispatcher.uc` | `modules/luci-base/ucode/dispatcher.uc` |
-| `origin/sysauth.ut` | `modules/luci-base/ucode/template/sysauth.ut` |
-| `origin/bootstrap-sysauth.ut` | `themes/luci-theme-bootstrap/ucode/template/themes/bootstrap/sysauth.ut` |
+| Origin File                   | LuCI Source Path                                                          |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| `origin/dispatcher.uc`        | `modules/luci-base/ucode/dispatcher.uc`                                   |
+| `origin/sysauth.ut`           | `modules/luci-base/ucode/template/sysauth.ut`                             |
+| `origin/bootstrap-sysauth.ut` | `themes/luci-theme-bootstrap/ucode/template/themes/bootstrap/sysauth.ut`  |
 | `origin/luci-mod-system.json` | `modules/luci-mod-system/root/usr/share/luci/menu.d/luci-mod-system.json` |
-| `origin/luci` | `modules/luci-base/root/usr/share/rpcd/ucode/luci` |
-| `origin/luci-base.json` | `modules/luci-base/root/usr/share/rpcd/acl.d/luci-base.json` |
+| `origin/luci`                 | `modules/luci-base/root/usr/share/rpcd/ucode/luci`                        |
+| `origin/luci-base.json`       | `modules/luci-base/root/usr/share/rpcd/acl.d/luci-base.json`              |
 
 ### Patched Files (to deploy)
 
-| Patch File | OpenWrt Deployment Path |
-|---|---|
-| `patch/dispatcher.uc` | `/usr/share/ucode/luci/dispatcher.uc` |
-| `patch/sysauth.ut` | `/usr/share/ucode/luci/template/sysauth.ut` |
-| `patch/bootstrap-sysauth.ut` | `/usr/share/ucode/luci/template/themes/bootstrap/sysauth.ut` |
-| `patch/luci-mod-system.json` | `/usr/share/luci/menu.d/luci-mod-system.json` |
-| `patch/luci` | `/usr/share/rpcd/ucode/luci` |
-| `patch/luci-base.json` | `/usr/share/rpcd/acl.d/luci-base.json` |
-| `patch/view/system/exauth.js` | `/www/luci-static/resources/view/system/exauth.js` |
+| Patch File                    | OpenWrt Deployment Path                                      |
+| ----------------------------- | ------------------------------------------------------------ |
+| `patch/dispatcher.uc`         | `/usr/share/ucode/luci/dispatcher.uc`                        |
+| `patch/sysauth.ut`            | `/usr/share/ucode/luci/template/sysauth.ut`                  |
+| `patch/bootstrap-sysauth.ut`  | `/usr/share/ucode/luci/template/themes/bootstrap/sysauth.ut` |
+| `patch/luci-mod-system.json`  | `/usr/share/luci/menu.d/luci-mod-system.json`                |
+| `patch/luci`                  | `/usr/share/rpcd/ucode/luci`                                 |
+| `patch/luci-base.json`        | `/usr/share/rpcd/acl.d/luci-base.json`                       |
+| `patch/view/system/exauth.js` | `/www/luci-static/resources/view/system/exauth.js`           |
 
 ## How to Apply
 
@@ -111,4 +112,3 @@ cp patch/view/system/exauth.js /www/luci-static/resources/view/system/exauth.js
 rm -f /tmp/luci-indexcache*
 /etc/init.d/rpcd restart
 ```
-

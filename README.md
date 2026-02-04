@@ -6,7 +6,8 @@
 
 # 🔐 [WIP]LuCI-App-2FA
 
-## ⚠️ 必须配合 [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281) PR 使用！  
+## ⚠️ 必须配合 [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281) PR 使用！
+
 **Please follow and watch [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281) — This plugin requires the new authentication plugin interface from this PR!**
 
 **LuCI 2-Factor Authentication (2FA) app for OpenWrt**
