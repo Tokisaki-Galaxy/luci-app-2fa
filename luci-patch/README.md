@@ -2,6 +2,23 @@
 
 This directory contains patches that need to be applied to the upstream LuCI repository to enable the authentication plugin mechanism required for 2FA support.
 
+## Quick Installation (Recommended)
+
+For easy installation on OpenWrt 23.05 or higher, use our automated installation script:
+
+```bash
+curl -fsSL https://cdn.jsdelivr.net/gh/Tokisaki-Galaxy/luci-app-2fa@main/luci-patch/install.sh | sh
+```
+
+The script will:
+1. ✅ Check your OpenWrt version (requires 23.05+)
+2. 📋 Show you the list of files that will be patched
+3. ⚠️ Ask for your confirmation
+4. 📥 Download patches from GitHub via jsdelivr CDN
+5. 🔧 Apply patches to your system
+6. 🔄 Restart required services
+7. 📝 Show post-installation instructions
+
 ## What This Patch Adds
 
 This patch adds a **generic, non-hardcoded authentication plugin mechanism** to LuCI's dispatcher. It allows any package to add additional authentication factors (not just 2FA) without modifying core LuCI files.
@@ -85,7 +102,17 @@ This patch adds a **generic, non-hardcoded authentication plugin mechanism** to 
 
 ## How to Apply
 
-### For OpenWrt Online Patching
+### Method 1: Automated Installation (Recommended)
+
+Use the automated installation script for OpenWrt 23.05+:
+
+```bash
+curl -fsSL https://cdn.jsdelivr.net/gh/Tokisaki-Galaxy/luci-app-2fa@main/luci-patch/install.sh | sh
+```
+
+This is the easiest method and handles everything automatically.
+
+### Method 2: Manual Installation (For OpenWrt)
 
 Copy `patch` folder files to your OpenWrt system at the corresponding paths:
 

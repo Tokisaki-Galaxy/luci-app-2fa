@@ -41,8 +41,27 @@ This package adds two-factor authentication support to the LuCI web interface, e
 
 ### 📦 Installation
 
-This plugin **requires the new authentication plugin mechanism** introduced in [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281).  
-If you are building your own LuCI, you must apply the patch in [`luci-patch/0001-add-auth-plugin-mechanism.patch`](luci-patch/0001-add-auth-plugin-mechanism.patch):
+This plugin **requires the new authentication plugin mechanism** introduced in [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281).
+
+#### Quick Installation (OpenWrt 23.05+)
+
+For the easiest installation experience, use our automated script that applies the required patches:
+
+```bash
+# Step 1: Apply LuCI patches (one-time setup)
+curl -fsSL https://cdn.jsdelivr.net/gh/Tokisaki-Galaxy/luci-app-2fa@main/luci-patch/install.sh | sh
+
+# Step 2: Install the 2FA package
+wget https://tokisaki-galaxy.github.io/luci-app-2fa/all/key-build.pub -O /tmp/key-build.pub
+opkg-key add /tmp/key-build.pub
+echo "src/gz luci-app-2fa https://tokisaki-galaxy.github.io/luci-app-2fa/all" >> /etc/opkg/customfeeds.conf
+opkg update
+opkg install luci-app-2fa
+```
+
+#### Manual Installation (Building from Source)
+
+If you are building your own LuCI, you must apply the patch in the [`luci-patch`](luci-patch/) directory:
 
 ```bash
 # In your LuCI source directory
@@ -50,7 +69,7 @@ cd feeds/luci
 patch -p1 < /path/to/luci-app-2fa/luci-patch/0001-add-auth-plugin-mechanism.patch
 ```
 
-#### Install from Custom opkg Feed
+#### Install from Custom opkg Feed (Legacy)
 
 ```bash
 wget https://tokisaki-galaxy.github.io/luci-app-2fa/all/key-build.pub -O /tmp/key-build.pub
@@ -118,8 +137,27 @@ OpenWrt 的 LuCI 双因素认证（2FA）应用。
 
 ### 📦 安装方式
 
-本插件**必须依赖 [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281) PR 引入的新认证插件机制**。  
-如果你自行编译 LuCI，请在 [`luci-patch/0001-add-auth-plugin-mechanism.patch`](luci-patch/0001-add-auth-plugin-mechanism.patch) 目录下手动打 patch：
+本插件**必须依赖 [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281) PR 引入的新认证插件机制**。
+
+#### 快速安装 (OpenWrt 23.05+)
+
+推荐使用自动化脚本进行安装，它会自动应用所需的补丁：
+
+```bash
+# 步骤 1: 应用 LuCI 补丁（一次性设置）
+curl -fsSL https://cdn.jsdelivr.net/gh/Tokisaki-Galaxy/luci-app-2fa@main/luci-patch/install.sh | sh
+
+# 步骤 2: 安装 2FA 软件包
+wget https://tokisaki-galaxy.github.io/luci-app-2fa/all/key-build.pub -O /tmp/key-build.pub
+opkg-key add /tmp/key-build.pub
+echo "src/gz luci-app-2fa https://tokisaki-galaxy.github.io/luci-app-2fa/all" >> /etc/opkg/customfeeds.conf
+opkg update
+opkg install luci-app-2fa
+```
+
+#### 手动安装（从源码编译）
+
+如果你自行编译 LuCI，请在 [`luci-patch`](luci-patch/) 目录下手动打补丁：
 
 ```bash
 # 在你的 LuCI 源码目录下
@@ -127,7 +165,7 @@ cd feeds/luci
 patch -p1 < /path/to/luci-app-2fa/luci-patch/0001-add-auth-plugin-mechanism.patch
 ```
 
-#### 从自定义opkg软件源安装
+#### 从自定义opkg软件源安装（传统方式）
 
 ```bash
 wget https://tokisaki-galaxy.github.io/luci-app-2fa/all/key-build.pub -O /tmp/key-build.pub
@@ -137,7 +175,7 @@ opkg update
 opkg install luci-app-2fa
 ```
 
-#### 手动安装
+#### 离线手动安装
 
 1. 下载 [Release package](https://github.com/Tokisaki-Galaxy/luci-app-2fa/releases)
 2. 将软件包上传到您的 OpenWrt 系统并安装
