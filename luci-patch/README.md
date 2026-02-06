@@ -7,7 +7,7 @@ This directory contains patches that need to be applied to the upstream LuCI rep
 For easy installation on OpenWrt 23.05 or higher, use our automated installation script:
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/Tokisaki-Galaxy/luci-app-2fa@main/luci-patch/install.sh | sh
+curl -fsSL https://cdn.jsdelivr.net/gh/Tokisaki-Galaxy/luci-app-2fa@master/luci-patch/install.sh | sh
 ```
 
 The script will:
@@ -18,6 +18,8 @@ The script will:
 5. 🔧 Apply patches to your system
 6. 🔄 Restart required services
 7. 📝 Show post-installation instructions
+
+When non-interactive installation environment use `curl -fsSL https://cdn.jsdelivr.net/gh/Tokisaki-Galaxy/luci-app-2fa@master/luci-patch/install.sh | sh -s -- -y` to skip confirmation prompts.
 
 ## What This Patch Adds
 
@@ -104,19 +106,18 @@ This patch adds a **generic, non-hardcoded authentication plugin mechanism** to 
 
 ### Method 1: Automated Installation (Recommended)
 
-Use the automated installation script for OpenWrt 23.05+:
-
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/Tokisaki-Galaxy/luci-app-2fa@main/luci-patch/install.sh | sh
+curl -fsSL https://cdn.jsdelivr.net/gh/Tokisaki-Galaxy/luci-app-2fa@master/luci-patch/install.sh | sh
 ```
 
-This is the easiest method and handles everything automatically.
+If use automated script, please use`curl -fsSL https://cdn.jsdelivr.net/gh/Tokisaki-Galaxy/luci-app-2fa@master/luci-patch/install.sh | sh -s -- -y` skip confirmation prompts in non-interactive environments.
 
 ### Method 2: Manual Installation (For OpenWrt)
 
 Copy `patch` folder files to your OpenWrt system at the corresponding paths:
 
 ```bash
+opkg update&&opkg install ucode-mod-log
 # Dispatcher and templates
 cp patch/dispatcher.uc /usr/share/ucode/luci/dispatcher.uc
 cp patch/sysauth.ut /usr/share/ucode/luci/template/sysauth.ut

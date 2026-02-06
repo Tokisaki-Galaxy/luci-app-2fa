@@ -14,10 +14,13 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Global variable for auto-confirm mode
+AUTO_CONFIRM=0
+
 # GitHub repository info
 REPO_OWNER="Tokisaki-Galaxy"
 REPO_NAME="luci-app-2fa"
-BRANCH="main"
+BRANCH="master"
 BASE_URL="https://cdn.jsdelivr.net/gh/${REPO_OWNER}/${REPO_NAME}@${BRANCH}/luci-patch/patch"
 
 # Patch file list (source_file|target_path pairs)
@@ -32,26 +35,48 @@ view/system/exauth.js|/www/luci-static/resources/view/system/exauth.js
 "
 
 print_header() {
-    echo "${BLUE}========================================${NC}"
-    echo "${BLUE}   LuCI-App-2FA Patch Installer${NC}"
-    echo "${BLUE}========================================${NC}"
-    echo ""
+    printf "${BLUE}========================================${NC}\n"
+    printf "${BLUE}   LuCI-App-2FA Patch Installer${NC}\n"
+    printf "${BLUE}========================================${NC}\n"
+    printf "\n"
 }
 
 print_success() {
-    echo "${GREEN}✓${NC} $1"
+    printf "${GREEN}✓${NC} %s\n" "$1"
 }
 
 print_error() {
-    echo "${RED}✗${NC} $1"
+    printf "${RED}✗${NC} %s\n" "$1"
 }
 
 print_warning() {
-    echo "${YELLOW}⚠${NC} $1"
+    printf "${YELLOW}⚠${NC} %s\n" "$1"
 }
 
 print_info() {
-    echo "${BLUE}ℹ${NC} $1"
+    printf "${BLUE}ℹ${NC} %s\n" "$1"
+}
+
+show_usage() {
+    printf "Usage: %s [OPTIONS]\n" "$0"
+    printf "\n"
+    printf "Options:\n"
+    printf "  -y, --yes          Auto-confirm installation (skip confirmation prompt)\n"
+    printf "  -h, --help         Show this help message\n"
+    printf "\n"
+    printf "Examples:\n"
+    printf "  # Interactive mode (with confirmation)\n"
+    printf "  sh install.sh\n"
+    printf "\n"
+    printf "  # Auto-confirm mode (skip confirmation)\n"
+    printf "  sh install.sh -y\n"
+    printf "\n"
+    printf "  # Via curl pipe (interactive)\n"
+    printf "  curl -fsSL https://url/install.sh | sh\n"
+    printf "\n"
+    printf "  # Via curl pipe (auto-confirm)\n"
+    printf "  curl -fsSL https://url/install.sh | sh -s -- -y\n"
+    printf "\n"
 }
 
 check_openwrt_version() {
@@ -122,29 +147,41 @@ check_dependencies() {
 }
 
 list_patch_files() {
-    echo ""
+    printf "\n"
     print_info "The following patch files will be installed:"
-    echo ""
+    printf "\n"
     
     local index=1
-    # Use a temporary file to avoid subshell issues
     echo "$PATCH_FILES" | while IFS='|' read -r file target; do
         [ -z "$file" ] && continue
         printf "  ${YELLOW}%2d.${NC} %-30s => %s\n" "$index" "$file" "$target"
         index=$((index + 1))
     done
     
-    echo ""
+    printf "\n"
 }
 
 ask_confirmation() {
-    echo ""
+    # 如果启用了自动确认模式，直接跳过
+    if [ "$AUTO_CONFIRM" -eq 1 ]; then
+        print_info "Auto-confirm mode enabled, skipping confirmation..."
+        return 0
+    fi
+    
+    printf "\n"
     print_warning "This script will modify system files in /usr/share and /www directories."
     print_warning "It is recommended to backup your system before proceeding."
-    echo ""
+    printf "\n"
     
+    # 重定向 stdin 从 /dev/tty 读取，这样即使脚本通过管道执行也能读取用户输入
     printf "${YELLOW}Do you want to continue? [y/N]:${NC} "
-    read -r response
+    if [ -t 0 ]; then
+        # stdin is a terminal
+        read -r response
+    else
+        # stdin is redirected (e.g., from a pipe), read from /dev/tty
+        read -r response < /dev/tty
+    fi
     
     case "$response" in
         [yY][eE][sS]|[yY])
@@ -170,7 +207,7 @@ backup_file() {
 
 download_and_install_patches() {
     print_info "Downloading and installing patch files..."
-    echo ""
+    printf "\n"
     
     local temp_dir="/tmp/luci-app-2fa-patches"
     mkdir -p "$temp_dir"
@@ -202,12 +239,8 @@ download_and_install_patches() {
             # Restore original permissions if a backup exists
             local recent_backup=$(ls -t "${target}.backup."* 2>/dev/null | head -n1)
             if [ -n "$recent_backup" ] && [ -f "$recent_backup" ]; then
-                # Extract numeric permissions from ls output (BusyBox compatible)
-                # Note: Does not preserve special permissions (setuid/setgid/sticky)
-                # All patch files use standard 644 permissions, so this is sufficient
                 local perms=$(ls -l "$recent_backup" | awk '{
                     perm = $1
-                    # Convert symbolic to numeric (basic rwx conversion)
                     u = (substr(perm,2,1)=="r"?4:0) + (substr(perm,3,1)=="w"?2:0) + (substr(perm,4,1)=="x"?1:0)
                     g = (substr(perm,5,1)=="r"?4:0) + (substr(perm,6,1)=="w"?2:0) + (substr(perm,7,1)=="x"?1:0)
                     o = (substr(perm,8,1)=="r"?4:0) + (substr(perm,9,1)=="w"?2:0) + (substr(perm,10,1)=="x"?1:0)
@@ -215,7 +248,6 @@ download_and_install_patches() {
                 }')
                 chmod "$perms" "$target" 2>/dev/null || chmod 644 "$target"
             else
-                # New file, use default permissions
                 chmod 644 "$target"
             fi
             print_success "Installed: $target"
@@ -230,8 +262,25 @@ download_and_install_patches() {
     # Cleanup
     rm -rf "$temp_dir"
     
-    echo ""
+    printf "\n"
     print_success "All patch files installed successfully"
+}
+
+install_required_packages() {
+    printf "\n"
+    print_info "Installing mandatory package: ucode-mod-log..."
+    
+    if opkg update; then
+        if opkg install ucode-mod-log; then
+            print_success "Package ucode-mod-log installed successfully"
+        else
+            print_error "Failed to install ucode-mod-log. This package is mandatory!"
+            exit 1
+        fi
+    else
+        print_error "Failed to run 'opkg update'. Please check your internet connection."
+        exit 1
+    fi
 }
 
 restart_services() {
@@ -253,32 +302,51 @@ restart_services() {
 }
 
 print_post_install_info() {
-    echo ""
+    printf "\n"
     print_header
     print_success "Installation completed successfully!"
-    echo ""
+    printf "\n"
     print_info "What's next:"
-    echo ""
-    echo "  1. Install luci-app-2fa package:"
-    echo "     ${GREEN}wget https://tokisaki-galaxy.github.io/${REPO_NAME}/all/key-build.pub -O /tmp/key-build.pub${NC}"
-    echo "     ${GREEN}opkg-key add /tmp/key-build.pub${NC}"
-    echo "     ${GREEN}echo 'src/gz ${REPO_NAME} https://tokisaki-galaxy.github.io/${REPO_NAME}/all' >> /etc/opkg/customfeeds.conf${NC}"
-    echo "     ${GREEN}opkg update${NC}"
-    echo "     ${GREEN}opkg install ${REPO_NAME}${NC}"
-    echo ""
-    echo "  2. Access LuCI and navigate to:"
-    echo "     ${BLUE}System → Administration → Authentication${NC}"
-    echo ""
-    echo "  3. Configure 2FA at:"
-    echo "     ${BLUE}System → 2-Factor Auth${NC}"
-    echo ""
+    printf "\n"
+    printf "  1. Install luci-app-2fa package:\n"
+    printf "     ${GREEN}wget https://tokisaki-galaxy.github.io/${REPO_NAME}/all/key-build.pub -O /tmp/key-build.pub${NC}\n"
+    printf "     ${GREEN}opkg-key add /tmp/key-build.pub${NC}\n"
+    printf "     ${GREEN}echo 'src/gz ${REPO_NAME} https://tokisaki-galaxy.github.io/${REPO_NAME}/all' >> /etc/opkg/customfeeds.conf${NC}\n"
+    printf "     ${GREEN}opkg update${NC}\n"
+    printf "     ${GREEN}opkg install ${REPO_NAME}${NC}\n"
+    printf "\n"
+    printf "  2. Access LuCI and navigate to:\n"
+    printf "     ${BLUE}System → Administration → Authentication${NC}\n"
+    printf "\n"
+    printf "  3. Configure 2FA at:\n"
+    printf "     ${BLUE}System → 2-Factor Auth${NC}\n"
+    printf "\n"
     print_info "For more information, visit:"
-    echo "  https://github.com/${REPO_OWNER}/${REPO_NAME}"
-    echo ""
+    printf "  https://github.com/${REPO_OWNER}/${REPO_NAME}\n"
+    printf "\n"
 }
 
 # Main installation flow
 main() {
+    # Parse command line arguments
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -y|--yes)
+                AUTO_CONFIRM=1
+                shift
+                ;;
+            -h|--help)
+                show_usage
+                exit 0
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+    done
+    
     print_header
     
     check_openwrt_version
@@ -286,11 +354,12 @@ main() {
     list_patch_files
     ask_confirmation
     
-    echo ""
+    printf "\n"
     download_and_install_patches
+    install_required_packages
     restart_services
     print_post_install_info
 }
 
-# Run main function
-main
+# Run main function with all arguments
+main "$@"
