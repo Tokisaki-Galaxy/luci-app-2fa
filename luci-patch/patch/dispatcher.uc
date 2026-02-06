@@ -571,7 +571,8 @@ function get_auth_challenge(user) {
 					pending: true,
 					plugin: plugin,
 					fields: result.fields ?? [],
-					message: result.message ?? ''
+					message: result.message ?? '',
+					html: result.html
 				};
 			}
 		}
@@ -1061,7 +1062,8 @@ dispatch = function(_http, path) {
 						duser: 'root',
 						fuser: user,
 						auth_fields: auth_fields,
-						auth_message: auth_message
+						auth_message: auth_message,
+						auth_html: auth_check.html
 					};
 					let theme_sysauth = `themes/${basename(runtime.env.media)}/sysauth`;
 
