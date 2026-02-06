@@ -151,7 +151,7 @@ jobs:
           fi
 
           # 清理上次构建的产物（SDK 缓存可能包含旧文件）
-          rm -rf output_ipk output_apk
+          rm -rf output_ipk output_apk upload
           mkdir -p ./bin/packages
           find ./bin -type f -name "${PACKAGE_NAME}*.ipk" -delete
           find ./bin -type f -name "${PACKAGE_NAME}*.apk" -delete
