@@ -203,9 +203,11 @@ download_and_install_patches() {
             local recent_backup=$(ls -t "${target}.backup."* 2>/dev/null | head -n1)
             if [ -n "$recent_backup" ] && [ -f "$recent_backup" ]; then
                 # Extract numeric permissions from ls output (BusyBox compatible)
+                # Note: Does not preserve special permissions (setuid/setgid/sticky)
+                # All patch files use standard 644 permissions, so this is sufficient
                 local perms=$(ls -l "$recent_backup" | awk '{
                     perm = $1
-                    # Convert symbolic to numeric (basic conversion)
+                    # Convert symbolic to numeric (basic rwx conversion)
                     u = (substr(perm,2,1)=="r"?4:0) + (substr(perm,3,1)=="w"?2:0) + (substr(perm,4,1)=="x"?1:0)
                     g = (substr(perm,5,1)=="r"?4:0) + (substr(perm,6,1)=="w"?2:0) + (substr(perm,7,1)=="x"?1:0)
                     o = (substr(perm,8,1)=="r"?4:0) + (substr(perm,9,1)=="w"?2:0) + (substr(perm,10,1)=="x"?1:0)
