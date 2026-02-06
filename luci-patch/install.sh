@@ -199,24 +199,19 @@ download_and_install_patches() {
             # Install file
             cp "$temp_file" "$target"
             
-            # Restore original permissions if file existed, otherwise use 644
-            if [ -f "${target}.backup."* ] 2>/dev/null; then
-                # Find the most recent backup to restore permissions from
-                local recent_backup=$(ls -t "${target}.backup."* 2>/dev/null | head -n1)
-                if [ -n "$recent_backup" ] && [ -f "$recent_backup" ]; then
-                    # Extract numeric permissions from ls output (BusyBox compatible)
-                    local perms=$(ls -l "$recent_backup" | awk '{
-                        perm = $1
-                        # Convert symbolic to numeric (basic conversion)
-                        u = (substr(perm,2,1)=="r"?4:0) + (substr(perm,3,1)=="w"?2:0) + (substr(perm,4,1)=="x"?1:0)
-                        g = (substr(perm,5,1)=="r"?4:0) + (substr(perm,6,1)=="w"?2:0) + (substr(perm,7,1)=="x"?1:0)
-                        o = (substr(perm,8,1)=="r"?4:0) + (substr(perm,9,1)=="w"?2:0) + (substr(perm,10,1)=="x"?1:0)
-                        print u g o
-                    }')
-                    chmod "$perms" "$target" 2>/dev/null || chmod 644 "$target"
-                else
-                    chmod 644 "$target"
-                fi
+            # Restore original permissions if a backup exists
+            local recent_backup=$(ls -t "${target}.backup."* 2>/dev/null | head -n1)
+            if [ -n "$recent_backup" ] && [ -f "$recent_backup" ]; then
+                # Extract numeric permissions from ls output (BusyBox compatible)
+                local perms=$(ls -l "$recent_backup" | awk '{
+                    perm = $1
+                    # Convert symbolic to numeric (basic conversion)
+                    u = (substr(perm,2,1)=="r"?4:0) + (substr(perm,3,1)=="w"?2:0) + (substr(perm,4,1)=="x"?1:0)
+                    g = (substr(perm,5,1)=="r"?4:0) + (substr(perm,6,1)=="w"?2:0) + (substr(perm,7,1)=="x"?1:0)
+                    o = (substr(perm,8,1)=="r"?4:0) + (substr(perm,9,1)=="w"?2:0) + (substr(perm,10,1)=="x"?1:0)
+                    printf "%d%d%d", u, g, o
+                }')
+                chmod "$perms" "$target" 2>/dev/null || chmod 644 "$target"
             else
                 # New file, use default permissions
                 chmod 644 "$target"
