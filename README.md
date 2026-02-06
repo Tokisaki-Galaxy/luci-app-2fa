@@ -6,8 +6,10 @@
 
 # 🔐 [WIP]LuCI-App-2FA
 
-## ⚠️ 必须配合 [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281) PR 使用！  
-**Please follow and watch [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281) — This plugin requires the new authentication plugin interface from this PR!**
+## ⚠️ 需要先通过交互式补丁脚本完成 LuCI 侧改动  need to apply LuCI patch first
+**请先运行：`curl -fsSL https://cdn.jsdelivr.net/gh/Tokisaki-Galaxy/luci-app-2fa@main/luci-patch/install.sh | sh` 进行交互式 patch；相关变更正在上游仓库以 [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281) PR 推进中。**
+
+**Run first: `curl -fsSL https://cdn.jsdelivr.net/gh/Tokisaki-Galaxy/luci-app-2fa@main/luci-patch/install.sh | sh` to apply LuCI patch interactively; the changes are being upstreamed via [openwrt/luci#8281](https://github.com/openwrt/luci/pull/8281).**
 
 **LuCI 2-Factor Authentication (2FA) app for OpenWrt**
 
