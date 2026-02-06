@@ -65,10 +65,17 @@ check_openwrt_version() {
     . /etc/openwrt_release
     
     local version="${DISTRIB_RELEASE}"
-    local major_version=$(echo "$version" | cut -d'.' -f1)
-    local minor_version=$(echo "$version" | cut -d'.' -f2)
+    # Extract major and minor version, handling snapshots and other suffixes
+    local major_version=$(echo "$version" | cut -d'.' -f1 | sed 's/[^0-9]//g')
+    local minor_version=$(echo "$version" | cut -d'.' -f2 | sed 's/[^0-9]//g')
     
     print_info "Detected OpenWrt version: ${version}"
+    
+    # Validate that we got numeric versions
+    if [ -z "$major_version" ] || [ -z "$minor_version" ]; then
+        print_error "Cannot parse OpenWrt version: ${version}"
+        exit 1
+    fi
     
     # Check if version >= 23.05
     if [ "$major_version" -lt 23 ]; then
@@ -109,6 +116,7 @@ list_patch_files() {
     echo ""
     
     local index=1
+    # Use a temporary file to avoid subshell issues
     echo "$PATCH_FILES" | while IFS='|' read -r file target; do
         [ -z "$file" ] && continue
         printf "  ${YELLOW}%2d.${NC} %-30s => %s\n" "$index" "$file" "$target"
@@ -142,7 +150,8 @@ backup_file() {
     local file="$1"
     
     if [ -f "$file" ]; then
-        local backup_file="${file}.backup.$(date +%Y%m%d_%H%M%S)"
+        # Use PID to ensure unique backup names
+        local backup_file="${file}.backup.$(date +%Y%m%d_%H%M%S).$$"
         cp "$file" "$backup_file"
         print_info "Backed up: $file -> $backup_file"
     fi
@@ -155,7 +164,11 @@ download_and_install_patches() {
     local temp_dir="/tmp/luci-app-2fa-patches"
     mkdir -p "$temp_dir"
     
-    echo "$PATCH_FILES" | while IFS='|' read -r file target; do
+    # Save PATCH_FILES to a temp file to avoid subshell issues
+    local temp_list="${temp_dir}/file_list"
+    echo "$PATCH_FILES" > "$temp_list"
+    
+    while IFS='|' read -r file target; do
         [ -z "$file" ] && continue
         
         local url="${BASE_URL}/${file}"
@@ -172,16 +185,28 @@ download_and_install_patches() {
         
         # Download file
         if curl -fsSL "$url" -o "$temp_file"; then
-            # Install file
-            cp "$temp_file" "$target"
-            chmod 644 "$target"
+            # Preserve original permissions if file exists, otherwise use 644
+            if [ -f "$target" ]; then
+                # Copy permissions from existing file
+                cp "$temp_file" "$target"
+                # Restore original permissions by copying from backup
+                local backup_file=$(ls -t "${target}.backup."* 2>/dev/null | head -n1)
+                if [ -n "$backup_file" ] && [ -f "$backup_file" ]; then
+                    chmod --reference="$backup_file" "$target"
+                fi
+            else
+                # New file, use default permissions
+                cp "$temp_file" "$target"
+                chmod 644 "$target"
+            fi
             print_success "Installed: $target"
         else
             print_error "Failed to download: $url"
             print_error "Installation incomplete. Please check your internet connection."
+            rm -rf "$temp_dir"
             exit 1
         fi
-    done
+    done < "$temp_list"
     
     # Cleanup
     rm -rf "$temp_dir"
