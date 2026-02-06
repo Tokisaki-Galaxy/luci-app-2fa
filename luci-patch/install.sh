@@ -66,7 +66,7 @@ check_openwrt_version() {
     
     local version="${DISTRIB_RELEASE}"
     # Extract version number before any non-numeric suffix (like -SNAPSHOT, -rc1, etc.)
-    local clean_version=$(echo "$version" | sed 's/[^0-9\.].*//')
+    local clean_version=$(echo "$version" | sed 's/[^0-9.].*//')
     local major_version=$(echo "$clean_version" | cut -d'.' -f1)
     local minor_version=$(echo "$clean_version" | cut -d'.' -f2)
     
@@ -191,12 +191,7 @@ download_and_install_patches() {
         local target_dir=$(dirname "$target")
         mkdir -p "$target_dir"
         
-        # Backup existing file and save its permissions
-        local old_perms=""
-        if [ -f "$target" ]; then
-            # Get current file permissions (portable way)
-            old_perms=$(ls -l "$target" | awk '{print $1}')
-        fi
+        # Backup existing file
         backup_file "$target"
         
         # Download file
@@ -205,12 +200,11 @@ download_and_install_patches() {
             cp "$temp_file" "$target"
             
             # Restore original permissions if file existed, otherwise use 644
-            if [ -n "$old_perms" ]; then
+            if [ -f "${target}.backup."* ] 2>/dev/null; then
                 # Find the most recent backup to restore permissions from
                 local recent_backup=$(ls -t "${target}.backup."* 2>/dev/null | head -n1)
                 if [ -n "$recent_backup" ] && [ -f "$recent_backup" ]; then
-                    # Extract numeric permissions from ls output (e.g., -rw-r--r-- -> 644)
-                    # This is a portable way that works with BusyBox
+                    # Extract numeric permissions from ls output (BusyBox compatible)
                     local perms=$(ls -l "$recent_backup" | awk '{
                         perm = $1
                         # Convert symbolic to numeric (basic conversion)
@@ -220,6 +214,8 @@ download_and_install_patches() {
                         print u g o
                     }')
                     chmod "$perms" "$target" 2>/dev/null || chmod 644 "$target"
+                else
+                    chmod 644 "$target"
                 fi
             else
                 # New file, use default permissions
@@ -267,11 +263,11 @@ print_post_install_info() {
     print_info "What's next:"
     echo ""
     echo "  1. Install luci-app-2fa package:"
-    echo "     ${GREEN}wget https://tokisaki-galaxy.github.io/luci-app-2fa/all/key-build.pub -O /tmp/key-build.pub${NC}"
+    echo "     ${GREEN}wget https://tokisaki-galaxy.github.io/${REPO_NAME}/all/key-build.pub -O /tmp/key-build.pub${NC}"
     echo "     ${GREEN}opkg-key add /tmp/key-build.pub${NC}"
-    echo "     ${GREEN}echo 'src/gz luci-app-2fa https://tokisaki-galaxy.github.io/luci-app-2fa/all' >> /etc/opkg/customfeeds.conf${NC}"
+    echo "     ${GREEN}echo 'src/gz ${REPO_NAME} https://tokisaki-galaxy.github.io/${REPO_NAME}/all' >> /etc/opkg/customfeeds.conf${NC}"
     echo "     ${GREEN}opkg update${NC}"
-    echo "     ${GREEN}opkg install luci-app-2fa${NC}"
+    echo "     ${GREEN}opkg install ${REPO_NAME}${NC}"
     echo ""
     echo "  2. Access LuCI and navigate to:"
     echo "     ${BLUE}System → Administration → Authentication${NC}"
