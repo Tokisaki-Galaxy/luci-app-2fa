@@ -65,17 +65,28 @@ check_openwrt_version() {
     . /etc/openwrt_release
     
     local version="${DISTRIB_RELEASE}"
-    # Extract major and minor version, handling snapshots and other suffixes
-    local major_version=$(echo "$version" | cut -d'.' -f1 | sed 's/[^0-9]//g')
-    local minor_version=$(echo "$version" | cut -d'.' -f2 | sed 's/[^0-9]//g')
+    # Extract version number before any non-numeric suffix (like -SNAPSHOT, -rc1, etc.)
+    local clean_version=$(echo "$version" | sed 's/[^0-9\.].*//')
+    local major_version=$(echo "$clean_version" | cut -d'.' -f1)
+    local minor_version=$(echo "$clean_version" | cut -d'.' -f2)
+    
+    # Remove leading zeros to avoid octal interpretation
+    major_version=$(echo "$major_version" | sed 's/^0*//')
+    minor_version=$(echo "$minor_version" | sed 's/^0*//')
+    
+    # Default to 0 if empty
+    major_version=${major_version:-0}
+    minor_version=${minor_version:-0}
     
     print_info "Detected OpenWrt version: ${version}"
     
     # Validate that we got numeric versions
-    if [ -z "$major_version" ] || [ -z "$minor_version" ]; then
-        print_error "Cannot parse OpenWrt version: ${version}"
-        exit 1
-    fi
+    case "$major_version" in
+        ''|*[!0-9]*) 
+            print_error "Cannot parse OpenWrt version: ${version}"
+            exit 1
+            ;;
+    esac
     
     # Check if version >= 23.05
     if [ "$major_version" -lt 23 ]; then
@@ -151,9 +162,9 @@ backup_file() {
     
     if [ -f "$file" ]; then
         # Use PID to ensure unique backup names
-        local backup_file="${file}.backup.$(date +%Y%m%d_%H%M%S).$$"
-        cp "$file" "$backup_file"
-        print_info "Backed up: $file -> $backup_file"
+        local backup_path="${file}.backup.$(date +%Y%m%d_%H%M%S).$$"
+        cp "$file" "$backup_path"
+        print_info "Backed up: $file -> $backup_path"
     fi
 }
 
@@ -180,23 +191,38 @@ download_and_install_patches() {
         local target_dir=$(dirname "$target")
         mkdir -p "$target_dir"
         
-        # Backup existing file
+        # Backup existing file and save its permissions
+        local old_perms=""
+        if [ -f "$target" ]; then
+            # Get current file permissions (portable way)
+            old_perms=$(ls -l "$target" | awk '{print $1}')
+        fi
         backup_file "$target"
         
         # Download file
         if curl -fsSL "$url" -o "$temp_file"; then
-            # Preserve original permissions if file exists, otherwise use 644
-            if [ -f "$target" ]; then
-                # Copy permissions from existing file
-                cp "$temp_file" "$target"
-                # Restore original permissions by copying from backup
-                local backup_file=$(ls -t "${target}.backup."* 2>/dev/null | head -n1)
-                if [ -n "$backup_file" ] && [ -f "$backup_file" ]; then
-                    chmod --reference="$backup_file" "$target"
+            # Install file
+            cp "$temp_file" "$target"
+            
+            # Restore original permissions if file existed, otherwise use 644
+            if [ -n "$old_perms" ]; then
+                # Find the most recent backup to restore permissions from
+                local recent_backup=$(ls -t "${target}.backup."* 2>/dev/null | head -n1)
+                if [ -n "$recent_backup" ] && [ -f "$recent_backup" ]; then
+                    # Extract numeric permissions from ls output (e.g., -rw-r--r-- -> 644)
+                    # This is a portable way that works with BusyBox
+                    local perms=$(ls -l "$recent_backup" | awk '{
+                        perm = $1
+                        # Convert symbolic to numeric (basic conversion)
+                        u = (substr(perm,2,1)=="r"?4:0) + (substr(perm,3,1)=="w"?2:0) + (substr(perm,4,1)=="x"?1:0)
+                        g = (substr(perm,5,1)=="r"?4:0) + (substr(perm,6,1)=="w"?2:0) + (substr(perm,7,1)=="x"?1:0)
+                        o = (substr(perm,8,1)=="r"?4:0) + (substr(perm,9,1)=="w"?2:0) + (substr(perm,10,1)=="x"?1:0)
+                        print u g o
+                    }')
+                    chmod "$perms" "$target" 2>/dev/null || chmod 644 "$target"
                 fi
             else
                 # New file, use default permissions
-                cp "$temp_file" "$target"
                 chmod 644 "$target"
             fi
             print_success "Installed: $target"
