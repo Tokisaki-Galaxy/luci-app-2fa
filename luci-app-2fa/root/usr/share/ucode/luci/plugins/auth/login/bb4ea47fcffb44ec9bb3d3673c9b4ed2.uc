@@ -135,7 +135,8 @@ function is_ip_whitelisted(ip) {
 	
 	let ips = settings.ip_whitelist;
 	if (type(ips) == 'string') {
-		ips = [ips];
+		// Split space-separated string into array
+		ips = split(trim(ips), /\s+/);
 	}
 	
 	for (let entry in ips) {
