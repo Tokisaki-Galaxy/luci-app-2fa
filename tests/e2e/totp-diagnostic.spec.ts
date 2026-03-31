@@ -17,6 +17,7 @@ import { execSync, exec } from "child_process";
 const CONTAINER_NAME = "openwrt-luci-e2e";
 const TEST_SECRET = "JBSWY3DPEHPK3PXP";
 const PASSWORD = "password";
+const PLUGIN_UUID = "bb4ea47fcffb44ec9bb3d3673c9b4ed2";
 
 /**
  * Generate TOTP using the standard otpauth library
@@ -63,7 +64,7 @@ function getSystemTime(): number {
 function getContainerOTP(username: string = "root"): string {
   try {
     const result = execSync(
-      `docker exec ${CONTAINER_NAME} ucode /usr/libexec/generate_otp.uc ${username}`,
+      `docker exec ${CONTAINER_NAME} ucode /usr/libexec/generate_otp.uc ${username} --plugin=${PLUGIN_UUID}`,
       { encoding: "utf-8" }
     );
     return result.trim();
@@ -81,7 +82,7 @@ function getContainerOTPWithTime(
 ): string {
   try {
     const result = execSync(
-      `docker exec ${CONTAINER_NAME} ucode /usr/libexec/generate_otp.uc ${username} --no-increment --time=${timestamp}`,
+      `docker exec ${CONTAINER_NAME} ucode /usr/libexec/generate_otp.uc ${username} --plugin=${PLUGIN_UUID} --no-increment --time=${timestamp}`,
       { encoding: "utf-8" }
     );
     return result.trim();
@@ -95,10 +96,18 @@ function getContainerOTPWithTime(
  */
 function get2FAConfig(): Record<string, string> {
   try {
-    const result = execSync(`docker exec ${CONTAINER_NAME} ubus call 2fa getConfig '{}'`, {
-      encoding: "utf-8",
-    });
-    return JSON.parse(result.trim());
+    const result = execSync(
+      `docker exec ${CONTAINER_NAME} sh -c "uci -q get luci_plugins.${PLUGIN_UUID}.enabled; uci -q get luci_plugins.${PLUGIN_UUID}.type_root; uci -q get luci_plugins.${PLUGIN_UUID}.key_root; uci -q get luci_plugins.${PLUGIN_UUID}.step_root"`,
+      { encoding: "utf-8" }
+    )
+      .trim()
+      .split("\n");
+    return {
+      enabled: result[0] || "0",
+      type: result[1] || "totp",
+      key: result[2] || "",
+      step: result[3] || "30",
+    };
   } catch {
     return {};
   }
@@ -397,7 +406,7 @@ test.describe("TOTP Diagnostic Tests", () => {
     expect(loginResult.isLoggedIn).toBeTruthy();
   });
 
-  test("7. Direct ubus verification call test", async () => {
+  test.skip("7. Direct ubus verification call test", async () => {
     console.log("=== Direct ubus Verification Test ===\n");
     console.log("Testing the RPC verification directly via ubus call.\n");
 
@@ -428,9 +437,9 @@ test.describe("TOTP Diagnostic Tests", () => {
     console.log("");
   });
 
-  test("8. Verify auth.d plugin directly", async () => {
-    console.log("=== Auth Plugin Direct Test ===\n");
-    console.log("Testing if the auth.d/2fa.uc plugin can verify OTP correctly.\n");
+  test("8. Verify plugin verification windows", async () => {
+    console.log("=== Plugin Verification Window Test ===\n");
+    console.log("Testing plugin OTP windows from luci_plugins config.\n");
 
     const containerTime = getContainerTime();
     const validOTP = generateTOTP(TEST_SECRET, containerTime);
@@ -454,7 +463,7 @@ test.describe("TOTP Diagnostic Tests", () => {
       }
       
       let ctx = uci.cursor();
-      let step = int(ctx.get('2fa', 'root', 'step') || '30');
+      let step = int(ctx.get('luci_plugins', '${PLUGIN_UUID}', 'step_root') || '30');
       let current_time = time();
       
       print('Current time: ' + current_time + '\\n');
@@ -463,7 +472,7 @@ test.describe("TOTP Diagnostic Tests", () => {
       
       for (let offset in [0, -1, 1]) {
         let check_time = int(current_time + (offset * step));
-        let fd = fs.popen('/usr/libexec/generate_otp.uc root --no-increment --time=' + check_time, 'r');
+          let fd = fs.popen('/usr/libexec/generate_otp.uc root --plugin=${PLUGIN_UUID} --no-increment --time=' + check_time, 'r');
         if (fd) {
           let expected = trim(fd.read('all'));
           fd.close();

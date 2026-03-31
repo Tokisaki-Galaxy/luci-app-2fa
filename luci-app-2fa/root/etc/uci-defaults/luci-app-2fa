@@ -10,7 +10,7 @@ touch /etc/config/luci_plugins
 
 # Create global section if not exists
 uci -q get luci_plugins.global >/dev/null || {
-	uci set luci_plugins.global=globals
+	uci set luci_plugins.global=global
 	uci set luci_plugins.global.enabled='0'
 }
 
@@ -21,7 +21,7 @@ uci -q get luci_plugins.global.auth_login_enabled >/dev/null || {
 
 # Create 2FA plugin section if not exists
 uci -q get "luci_plugins.${PLUGIN_UUID}" >/dev/null || {
-	uci set "luci_plugins.${PLUGIN_UUID}=plugin"
+	uci set "luci_plugins.${PLUGIN_UUID}=auth_login"
 	uci set "luci_plugins.${PLUGIN_UUID}.enabled=0"
 	uci set "luci_plugins.${PLUGIN_UUID}.name=Two-Factor Authentication"
 	

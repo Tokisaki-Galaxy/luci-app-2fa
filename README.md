@@ -84,11 +84,11 @@ make package/luci-app-2fa/compile V=s
 Configuration is stored in `/etc/config/luci_plugins`:
 
 ```
-config globals 'global'
+config global 'global'
     option enabled '1'
     option auth_login_enabled '1'
 
-config plugin 'bb4ea47fcffb44ec9bb3d3673c9b4ed2'
+config auth_login 'bb4ea47fcffb44ec9bb3d3673c9b4ed2'
     option enabled '1'
     option name 'Two-Factor Authentication'
     option key_root 'JBSWY3DPEHPK3PXP'
@@ -186,11 +186,11 @@ make package/luci-app-2fa/compile V=s
 配置保存在 `/etc/config/luci_plugins`:
 
 ```
-config globals 'global'
+config global 'global'
     option enabled '1'
     option auth_login_enabled '1'
 
-config plugin 'bb4ea47fcffb44ec9bb3d3673c9b4ed2'
+config auth_login 'bb4ea47fcffb44ec9bb3d3673c9b4ed2'
     option enabled '1'
     option name 'Two-Factor Authentication'
     option key_root 'JBSWY3DPEHPK3PXP'

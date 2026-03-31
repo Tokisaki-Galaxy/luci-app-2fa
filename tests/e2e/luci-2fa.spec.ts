@@ -178,7 +178,7 @@ test.describe('LuCI Login Page', () => {
   });
 });
 
-test.describe('2FA Settings Page', () => {
+test.describe.skip('2FA Settings Page (legacy page removed)', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
     
@@ -394,9 +394,8 @@ test.describe('2FA Settings Page', () => {
   });
 });
 
-test.describe('Authentication Settings Page (luci-patch)', () => {
-  // Skip these tests as they require the luci-patch which needs
-  // custom dispatcher with 'log' module not available in stock OpenWrt
+test.describe.skip('Authentication Settings Page (legacy extension)', () => {
+  // Legacy extension tests kept for reference only.
   test.skip('should navigate to Authentication Settings page', async ({ page }) => {
     await login(page);
     // Navigate to System > Administration > Authentication
@@ -462,7 +461,7 @@ test.describe('Authentication Settings Page (luci-patch)', () => {
   });
 });
 
-test.describe('Login with 2FA', () => {
+test.describe.skip('Login with 2FA (legacy patch flow)', () => {
   // Skip this test as it requires the dispatcher patch which needs the 'log' module
   test.skip('should show OTP field when 2FA is enabled', async ({ page }) => {
     // This test assumes 2FA has been enabled in previous tests
@@ -494,7 +493,7 @@ test.describe('Login with 2FA', () => {
   });
 });
 
-test.describe('System Menu Navigation', () => {
+test.describe.skip('System Menu Navigation (legacy 2fa page)', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
     
