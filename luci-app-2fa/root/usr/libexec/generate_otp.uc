@@ -209,8 +209,8 @@ function calculate_hmac_sha1(key, message) {
 	if (length(key) > 64)
 		binary_key = calculate_sha1(binary_key);
 
-	for (let i = 0; i < 64 - length(key); i++)
-		binary_key[length(key)+i] = 0x0;
+	for (let i = 0; i < 64 - length(binary_key); i++)
+		binary_key[length(binary_key)+i] = 0x0;
 
 	let ko = [];
 	for (let i = 0; i < 64; i++)

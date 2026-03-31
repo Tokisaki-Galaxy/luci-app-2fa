@@ -24,6 +24,7 @@ const DEFAULT_MIN_VALID_TIME = 1767225600;
 
 // Rate limit state file
 const RATE_LIMIT_FILE = '/tmp/2fa_rate_limit.json';
+const RATE_LIMIT_LOCK_FILE = '/tmp/2fa_rate_limit.lock';
 
 // Check if system time is calibrated (not earlier than minimum valid time)
 function check_time_calibration() {
@@ -258,6 +259,23 @@ function save_rate_limit_state(state) {
 	writefile(RATE_LIMIT_FILE, sprintf('%J', state));
 }
 
+function lock_rate_limit_state() {
+	let fd = popen('lock -w 5 ' + RATE_LIMIT_LOCK_FILE + ' >/dev/null 2>&1; echo $?', 'r');
+	if (!fd)
+		return false;
+
+	let status = trim(fd.read('all') || '');
+	fd.close();
+
+	return status == '0';
+}
+
+function unlock_rate_limit_state() {
+	let fd = popen('lock -u ' + RATE_LIMIT_LOCK_FILE + ' >/dev/null 2>&1', 'r');
+	if (fd)
+		fd.close();
+}
+
 // Check rate limit
 function check_rate_limit(ip) {
 	let ctx = cursor();
@@ -265,6 +283,9 @@ function check_rate_limit(ip) {
 	let rate_limit_enabled = ctx.get('luci_plugins', PLUGIN_UUID, 'rate_limit_enabled');
 	if (rate_limit_enabled != '1')
 		return { allowed: true, remaining: -1, locked_until: 0 };
+
+	if (!lock_rate_limit_state())
+		return { allowed: false, remaining: 0, locked_until: time() + 5 };
 	
 	let max_attempts = int(ctx.get('luci_plugins', PLUGIN_UUID, 'rate_limit_max_attempts') || '5');
 	let window = int(ctx.get('luci_plugins', PLUGIN_UUID, 'rate_limit_window') || '60');
@@ -272,6 +293,7 @@ function check_rate_limit(ip) {
 	
 	let now = time();
 	let state = load_rate_limit_state();
+	let result;
 	
 	if (!state[ip]) {
 		state[ip] = { attempts: [], locked_until: 0 };
@@ -280,7 +302,9 @@ function check_rate_limit(ip) {
 	let ip_state = state[ip];
 	
 	if (ip_state.locked_until > now) {
-		return { allowed: false, remaining: 0, locked_until: ip_state.locked_until };
+		result = { allowed: false, remaining: 0, locked_until: ip_state.locked_until };
+		unlock_rate_limit_state();
+		return result;
 	}
 	
 	let recent_attempts = [];
@@ -296,39 +320,83 @@ function check_rate_limit(ip) {
 		ip_state.locked_until = now + lockout;
 		ip_state.attempts = [];
 		save_rate_limit_state(state);
-		return { allowed: false, remaining: 0, locked_until: ip_state.locked_until };
+		result = { allowed: false, remaining: 0, locked_until: ip_state.locked_until };
+		unlock_rate_limit_state();
+		return result;
 	}
 	
 	save_rate_limit_state(state);
-	return { allowed: true, remaining: remaining, locked_until: 0 };
+	result = { allowed: true, remaining: remaining, locked_until: 0 };
+	unlock_rate_limit_state();
+	return result;
 }
 
-// Record a failed login attempt
-function record_failed_attempt(ip) {
+// Reserve a rate-limit attempt atomically before verification
+function consume_rate_limit_attempt(ip) {
 	let ctx = cursor();
 	
 	let rate_limit_enabled = ctx.get('luci_plugins', PLUGIN_UUID, 'rate_limit_enabled');
 	if (rate_limit_enabled != '1')
-		return;
+		return { allowed: true, remaining: -1, locked_until: 0 };
+
+	if (!lock_rate_limit_state())
+		return { allowed: false, remaining: 0, locked_until: time() + 5 };
+
+	let max_attempts = int(ctx.get('luci_plugins', PLUGIN_UUID, 'rate_limit_max_attempts') || '5');
+	let window = int(ctx.get('luci_plugins', PLUGIN_UUID, 'rate_limit_window') || '60');
+	let lockout = int(ctx.get('luci_plugins', PLUGIN_UUID, 'rate_limit_lockout') || '300');
 	
 	let now = time();
 	let state = load_rate_limit_state();
+	let result;
 	
 	if (!state[ip]) {
 		state[ip] = { attempts: [], locked_until: 0 };
 	}
-	
-	push(state[ip].attempts, now);
+
+	let ip_state = state[ip];
+
+	if (ip_state.locked_until > now) {
+		result = { allowed: false, remaining: 0, locked_until: ip_state.locked_until };
+		unlock_rate_limit_state();
+		return result;
+	}
+
+	let recent_attempts = [];
+	for (let attempt in ip_state.attempts) {
+		if (attempt > (now - window))
+			push(recent_attempts, attempt);
+	}
+	ip_state.attempts = recent_attempts;
+
+	if (length(ip_state.attempts) >= max_attempts) {
+		ip_state.locked_until = now + lockout;
+		ip_state.attempts = [];
+		save_rate_limit_state(state);
+		result = { allowed: false, remaining: 0, locked_until: ip_state.locked_until };
+		unlock_rate_limit_state();
+		return result;
+	}
+
+	push(ip_state.attempts, now);
 	save_rate_limit_state(state);
+	result = { allowed: true, remaining: max_attempts - length(ip_state.attempts), locked_until: 0 };
+	unlock_rate_limit_state();
+	return result;
 }
 
 // Clear rate limit for an IP
 function clear_rate_limit(ip) {
+	if (!lock_rate_limit_state())
+		return;
+
 	let state = load_rate_limit_state();
 	if (state[ip]) {
 		delete state[ip];
 		save_rate_limit_state(state);
 	}
+
+	unlock_rate_limit_state();
 }
 
 // Check if 2FA is enabled for a user
@@ -523,9 +591,9 @@ return {
 				return { success: true, whitelisted: true };
 			}
 			
-			// Check rate limit
+			// Reserve rate limit attempt atomically
 			if (client_ip) {
-				let rate_check = check_rate_limit(client_ip);
+				let rate_check = consume_rate_limit_attempt(client_ip);
 				if (!rate_check.allowed) {
 					let remaining_seconds = rate_check.locked_until - time();
 					return {
@@ -542,7 +610,6 @@ return {
 				otp = trim(otp);
 			
 			if (!otp || otp == '') {
-				if (client_ip) record_failed_attempt(client_ip);
 				return {
 					success: false,
 					message: 'Please enter your one-time password.'
@@ -552,8 +619,6 @@ return {
 			let verify_result = verify_otp(user, otp);
 			
 			if (!verify_result.success) {
-				if (client_ip) record_failed_attempt(client_ip);
-				
 				return {
 					success: false,
 					message: 'Invalid one-time password. Please try again.'
