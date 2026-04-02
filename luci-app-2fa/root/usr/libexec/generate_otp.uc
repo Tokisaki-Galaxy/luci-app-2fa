@@ -25,7 +25,7 @@ function decode_base32_to_bin(string) {
 	let clean = replace(string, /[\s=]/g, "");
 	if (length(clean) == 0) return null;
 
-	let out = [];
+	let bin = "";
 	let buffer = 0;
 	let bits = 0;
 
@@ -38,10 +38,10 @@ function decode_base32_to_bin(string) {
 
 		if (bits >= 8) {
 			bits -= 8;
-			push(out, (buffer >> bits) & 0xff);
+			bin += chr((buffer >> bits) & 0xff);
 		}
 	}
-	return join("", map(out, (c) => chr(c)));
+	return bin;
 }
 
 function calculate_hmac_sha1(key, message) {
@@ -63,19 +63,12 @@ function calculate_otp(secret_base32, counter_int) {
 	let secret_bin = decode_base32_to_bin(secret_base32);
 	if (!secret_bin) return null;
 
-	let counter_bin = pack(">I", 0) + pack(">I", counter_int);
+	let counter_bin = pack(">I", 0) + pack(">I", counter_int); 
+
 	let hmac_hex = calculate_hmac_sha1(secret_bin, counter_bin);
 
-	let digest = [];
-	for (let i = 0; i < length(hmac_hex); i += 2) {
-		push(digest, int(substr(hmac_hex, i, 2), 16));
-	}
-
-	let offset = digest[19] & 0xf;
-	let binary_code = ((digest[offset] & 0x7f) << 24) |
-	                  (digest[offset + 1] << 16) |
-	                  (digest[offset + 2] << 8) |
-	                  digest[offset + 3];
+	let offset = int(substr(hmac_hex, 38, 2), 16) & 0xf;
+	let binary_code = int(substr(hmac_hex, offset * 2, 8), 16) & 0x7fffffff;
 
 	return sprintf("%06d", binary_code % 1000000);
 }
