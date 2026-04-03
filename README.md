@@ -90,6 +90,7 @@ config global 'global'
 
 config auth_login 'bb4ea47fcffb44ec9bb3d3673c9b4ed2'
     option enabled '1'
+    option priority '15'
     option name 'Two-Factor Authentication'
     option key_root 'JBSWY3DPEHPK3PXP'
     option type_root 'totp'
@@ -99,6 +100,8 @@ config auth_login 'bb4ea47fcffb44ec9bb3d3673c9b4ed2'
     option rate_limit_window '60'
     option rate_limit_lockout '300'
 ```
+
+`priority` 用于控制插件执行顺序，数值越小越先执行。
 
 ### 🧪 Testing
 
