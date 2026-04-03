@@ -13,6 +13,7 @@
 import { popen, readfile, writefile, open } from 'fs';
 import { connect } from 'ubus';
 import { cursor } from 'uci';
+import { syslog, LOG_INFO, LOG_WARNING, LOG_AUTHPRIV } from 'log';
 
 const PLUGIN_UUID = 'bb4ea47fcffb44ec9bb3d3673c9b4ed2';
 
@@ -27,6 +28,7 @@ const DEFAULT_MIN_VALID_TIME = 1767225600;
 const RATE_LIMIT_FILE = '/tmp/2fa_rate_limit.json';
 const RATE_LIMIT_LOCK_FILE = '/tmp/2fa_rate_limit.lock';
 const DEFAULT_PRIORITY = 15;
+const RATE_LIMIT_STALE_SECONDS = 86400;
 let RATE_LIMIT_LOCK_HANDLE = null;
 let ubus = connect();
 
@@ -164,6 +166,21 @@ function netmask_to_prefix(mask) {
 	return prefix;
 }
 
+function push_interface_subnets(subnets, addrs, expected_len, max_mask) {
+	if (type(addrs) != 'array')
+		return;
+
+	for (let addr in addrs) {
+		if (!addr.address || addr.mask == null)
+			continue;
+
+		let ip_addr = iptoarr(addr.address);
+		let mask = int(addr.mask);
+		if (ip_addr && length(ip_addr) == expected_len && mask >= 0 && mask <= max_mask)
+			push(subnets, arrtoip(masked_bytes(ip_addr, mask)) + '/' + mask);
+	}
+}
+
 // Check if an IP is in a CIDR range
 function ip_in_cidr(ip, cidr) {
 	let addr = iptoarr(ip);
@@ -210,19 +227,9 @@ function is_ip_whitelisted(ip) {
 // Get all LAN interface subnets from OpenWrt network configuration
 function get_lan_subnets() {
 	let subnets = [];
-
-	// Prefer native ubus access over shelling out.
 	let status = ubus?.call('network.interface.lan', 'status', {});
-	if (status?.['ipv4-address']) {
-		for (let addr in status['ipv4-address']) {
-			if (addr.address && addr.mask) {
-				let ip_addr = iptoarr(addr.address);
-				let mask = int(addr.mask);
-				if (ip_addr && length(ip_addr) == 4 && mask >= 0 && mask <= 32)
-					push(subnets, arrtoip(masked_bytes(ip_addr, mask)) + '/' + mask);
-			}
-		}
-	}
+	push_interface_subnets(subnets, status?.['ipv4-address'], 4, 32);
+	push_interface_subnets(subnets, status?.['ipv6-address'], 16, 128);
 
 	// Fallback to UCI network config
 	if (length(subnets) == 0) {
@@ -239,6 +246,13 @@ function get_lan_subnets() {
 					push(subnets, arrtoip(masked_bytes(ip_addr, prefix)) + '/' + prefix);
 			}
 		}
+
+		let lan_ip6addr = ctx.get('network', 'lan', 'ip6addr');
+		if (lan_ip6addr) {
+			let cidr = parse_cidr(lan_ip6addr);
+			if (cidr && length(cidr.addr) == 16)
+				push(subnets, arrtoip(masked_bytes(cidr.addr, cidr.prefix)) + '/' + cidr.prefix);
+		}
 	}
 
 	return subnets;
@@ -250,7 +264,7 @@ function is_local_subnet(ip) {
 		return false;
 
 	let ip_addr = iptoarr(ip);
-	if (!ip_addr || length(ip_addr) != 4)
+	if (!ip_addr)
 		return false;
 
 	let lan_subnets = get_lan_subnets();
@@ -274,6 +288,51 @@ function load_rate_limit_state() {
 		return {};
 
 	return state;
+}
+
+function cleanup_rate_limit_state(state, now, window, lockout) {
+	let changed = false;
+	let cleaned = {};
+	let min_attempt = now - window;
+	let keep_window = lockout;
+	if (keep_window < RATE_LIMIT_STALE_SECONDS)
+		keep_window = RATE_LIMIT_STALE_SECONDS;
+	let stale_before = now - keep_window;
+	let original_entries = 0;
+	let cleaned_entries = 0;
+
+	for (let ip, ip_state in state) {
+		original_entries++;
+
+		if (type(ip_state) != 'object') {
+			changed = true;
+			continue;
+		}
+
+		let locked_until = int(ip_state.locked_until || 0);
+		let attempts = [];
+
+		if (type(ip_state.attempts) == 'array') {
+			for (let attempt in ip_state.attempts) {
+				attempt = int(attempt);
+				if (attempt > min_attempt)
+					push(attempts, attempt);
+			}
+		}
+
+		if (locked_until > now || length(attempts) > 0) {
+			cleaned[ip] = { attempts, locked_until };
+			cleaned_entries++;
+		}
+		else if (locked_until < stale_before) {
+			changed = true;
+		}
+	}
+
+	if (cleaned_entries != original_entries)
+		changed = true;
+
+	return { state: cleaned, changed };
 }
 
 // Save rate limit state
@@ -323,6 +382,10 @@ function evaluate_rate_limit(ip, consume_attempt) {
 
 	let now = time();
 	let state = load_rate_limit_state();
+	let cleanup = cleanup_rate_limit_state(state, now, window, lockout);
+	state = cleanup.state;
+	if (cleanup.changed)
+		save_rate_limit_state(state);
 	let result;
 
 	if (!state[ip]) {
@@ -574,15 +637,21 @@ return {
 			let client_ip = get_client_ip(http);
 
 			// Check if IP is whitelisted
-			if (client_ip && is_ip_whitelisted(client_ip)) {
-				return { success: true, whitelisted: true };
-			}
+		if (client_ip && is_ip_whitelisted(client_ip)) {
+			syslog(LOG_INFO|LOG_AUTHPRIV,
+				sprintf("luci: 2FA bypassed for %s from %s due to IP whitelist",
+					user || '?', client_ip || '?'));
+			return { success: true, whitelisted: true };
+		}
 
 			// Reserve rate limit attempt atomically
 			if (client_ip) {
 				let rate_check = consume_rate_limit_attempt(client_ip);
 				if (!rate_check.allowed) {
 					let remaining_seconds = rate_check.locked_until - time();
+					syslog(LOG_WARNING|LOG_AUTHPRIV,
+						sprintf("luci: 2FA blocked for %s from %s due to rate limit (%d seconds remaining)",
+							user || '?', client_ip || '?', remaining_seconds));
 					return {
 						success: false,
 						rate_limited: true,
@@ -597,6 +666,9 @@ return {
 				otp = trim(otp);
 
 			if (!otp || otp == '') {
+				syslog(LOG_WARNING|LOG_AUTHPRIV,
+					sprintf("luci: 2FA verification failed for %s from %s due to missing OTP",
+						user || '?', client_ip || '?'));
 				return {
 					success: false,
 					message: 'Please enter your one-time password.'
@@ -606,6 +678,9 @@ return {
 			let verify_result = verify_otp(user, otp);
 
 			if (!verify_result.success) {
+				syslog(LOG_WARNING|LOG_AUTHPRIV,
+					sprintf("luci: 2FA verification failed for %s from %s due to invalid OTP",
+						user || '?', client_ip || '?'));
 				return {
 					success: false,
 					message: 'Invalid one-time password. Please try again.'
@@ -615,6 +690,10 @@ return {
 			// Clear rate limit on successful login
 			if (client_ip) clear_rate_limit(client_ip);
 
+			syslog(LOG_INFO|LOG_AUTHPRIV,
+				sprintf("luci: 2FA verification succeeded for %s from %s",
+					user || '?', client_ip || '?'));
+			
 			return { success: true };
 	}
 };
